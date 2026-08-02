@@ -2792,6 +2792,284 @@ const DEEP_DIVES = {
 };
 
 /* ============================================================================
+ * FAMOUS QUESTIONS — HR / BEHAVIORAL ROUND
+ * ============================================================================
+ * STAR-structured answers grounded in real projects. [VERIFY] marks specifics
+ * (numbers, quotes, names) to swap for your actual memory before saying them.
+ * The situations are real; the scaffolding details are yours to make true.
+ * ========================================================================== */
+
+const HR_QUESTIONS = [
+  {
+    category: 'Career Oriented',
+    questions: [
+      {
+        q: 'Tell me about yourself',
+        principle: 'Present → past (2-3 proof points) → future, ending on why THIS role. 60-90 seconds. Not a resume readthrough — a narrative arc.',
+        answer:
+          "I'm a software engineer at Intuit, currently SDE II, working on the QuickBooks Projects and Payroll platform. I came up through NIT Trichy, joined as an intern, and grew into SDE II — so I've owned work across the full range, from shipping features to designing infrastructure. The work I'm proudest of sits at the intersection of reliability and scale: I built a traffic capture and replay framework that validates high-risk backend changes against real production traffic without touching customers, and I worked on the resiliency layer for our cross-service project sync. Alongside that I've shipped customer-facing financial features — project budgets, change orders — where correctness isn't optional because it's people's money. What I've realized I'm best at, and want more of, is exactly the kind of problem where a system has to be both safe and fast under real production pressure — which is why I'm interested in this role.",
+        notes: 'Swap the closing line to name what THIS company does that matches. Keep the arc: what I do now → 2-3 concrete proofs → what I want next.',
+      },
+      {
+        q: 'Company change reason',
+        principle: 'Pull toward the new, never push away from the old. Never criticize Intuit. Frame as growth, not escape.',
+        answer:
+          "Intuit has been a genuinely good place to grow — I went from intern to SDE II there and got to own real infrastructure. My reason for looking is about the kind of problem I want to work on next, not about leaving. The traffic replay framework and the resiliency work showed me I'm drawn to systems where reliability and scale are the core challenge, not a side concern. I want to go deeper into that, ideally somewhere the pace and the technical bar push me faster than staying on a familiar codebase would. It's a pull toward harder systems problems, not a push away from anything.",
+        notes: 'If asked directly about a negative, stay gracious: nothing I would call a problem, more that I have learned what energizes me and want to lean into it.',
+      },
+      {
+        q: 'Why this company?',
+        principle: 'Show you researched THEM specifically. Connect their problem space to your demonstrated strengths. Generic answers fail here.',
+        answer:
+          "[VERIFY — research the specific company] Two things. First, the problem space: you operate at a scale and reliability bar where the kind of work I've been doing — validating changes against real traffic, designing for failure across services — is central, not peripheral. That's exactly where I do my best work and where I want to grow. Second, the engineering culture I've read and heard about rewards depth and ownership, which matches how I like to work — I took the traffic replay framework from an idea to a platform used across multiple migrations largely because I was given the room to own it. I want more of that, at a higher bar.",
+        notes: 'MANDATORY: fill the [VERIFY] with 2 specific, researched facts about the company — a product, an engineering blog post, a scaling challenge they wrote about. Generic = instant tell.',
+      },
+      {
+        q: 'Next role priorities',
+        principle: 'Show ambition aligned with the role level. Balance technical growth with impact. Avoid "I want to be a manager" unless the role is management.',
+        answer:
+          "Three things, in order. First, technical depth on hard distributed-systems problems — I've gotten a taste of it with replay and resiliency work and I want to go much deeper on systems where correctness under scale is the whole game. Second, ownership of something end to end — I do my best work when I own a problem from design through production, like I did with the replay framework, rather than picking up slices. Third, growing the people around me — I've started mentoring informally and I want that to become a real part of how I work. Long-term I care more about becoming the engineer teams reach for on the hardest problems than about a specific title.",
+        notes: 'Calibrate ambition to the role. For a strong IC role, lead with technical depth + ownership. Mention mentoring as growth, not as pivot away from coding.',
+      },
+    ],
+  },
+  {
+    category: 'Project Based',
+    questions: [
+      {
+        q: 'Most proud project',
+        principle: 'Pick the one with the most depth AND clearest personal ownership. Traffic replay. Lead with impact, show the hard decision, end with what it taught you.',
+        answer:
+          "The traffic capture and replay framework. The problem: our project service handles around 100,000 customers a day of financial data, and we needed to make high-risk backend changes — a database migration, a Hibernate upgrade — with confidence that they wouldn't break real customer flows. Manual and automated tests only cover the cases you thought of; they can't reproduce the shape of real production traffic. So I built a framework that runs a passive parallel server with the change applied and replays real production traffic against it, comparing response parity, data correctness, and latency — all without ever touching a customer or a downstream system. The hardest decision was making blast radius zero by construction, not by convention: I mocked all downstream writes at the network layer with a proxy, so even a bug in the application code physically cannot reach production. It backed multiple migrations with zero customer-facing incidents. What I'm proudest of isn't the code — it's that I took it from an idea to a platform other teams used, and it changed how we ship risky changes.",
+        notes: 'This is your strongest project — own it fully. The "zero by construction not convention" line is the senior signal; land it. Have the BFS data-validation and TLS-sandwich details ready for follow-ups.',
+      },
+      {
+        q: 'How you choose technologies',
+        principle: 'Show you reason from constraints, not hype. Name a real decision, the alternatives, and the tradeoff. Interviewers grade the reasoning, not the choice.',
+        answer:
+          "I start from the constraint, not the technology. Concrete example from the replay framework: for capturing traffic, I had to choose between instrumenting the application code, a sidecar with GoReplay, or a service-mesh mirror. I chose the sidecar — because the alternative, in-process capture, would have coupled the capture lifecycle to the application's release cycle and put my code in the customer's critical request path, where a bug could add latency or crash the app. The sidecar gave me an independent failure domain, independent rollout, and zero application changes. The cost was a small resource overhead and a network hop, which I accepted because safety and isolation were non-negotiable. That's my general pattern: name the invariant that can't be violated, then pick the option that protects it, and be explicit about what I'm trading away.",
+        notes: 'The reasoning structure — invariant → option that protects it → what I traded — matters more than the specific tech. Reusable for Kafka partition key, optimistic locking, API-vs-events.',
+      },
+      {
+        q: 'Leading a project',
+        principle: 'Leadership without authority is the SDE2 sweet spot. Show you drove clarity, sequencing, and unblocking — not that you managed people.',
+        answer:
+          "The clearest example is the traffic replay framework — I led it without any formal authority. It started as my proposal to solve a validation gap, and I had to bring along multiple stakeholders: the teams whose downstream services I needed to mock, the platform folks, and leadership who had to fund a parallel production stack. I led by turning a vague fear — 'we might break something in this migration' — into a concrete, staged plan with clear checkpoints, and by reframing the ask to each team in terms they cared about: I told the downstream teams that mocking their services protected them from doubled traffic, rather than asking them for a favor. When blockers came up across teams, I owned surfacing them fast and routing them to whoever could unblock. The framework shipped and backed multiple migrations. The lesson: leading without authority is mostly about converting ambiguity into a plan everyone can see, and making it obviously in each person's interest to help.",
+        notes: 'AU launch is your backup leadership story (10+ teams, gates, sequencing). Use whichever fits the follow-up better. Emphasize converting ambiguity into a shared plan.',
+      },
+    ],
+  },
+  {
+    category: 'Teamwork & Collaboration',
+    questions: [
+      {
+        q: 'Cross-team collaboration',
+        principle: 'Name the tension between teams and how you resolved it through THEIR incentives, not authority.',
+        answer:
+          "On the replay framework, I needed downstream teams — payments, notifications, and others — to let me mock their services in the parallel stack. Their first instinct was hesitation: it was more surface area for them and they didn't own the project. The tension was real. I resolved it by reframing: replaying write traffic against their real services would double their load and risk corrupting their state, so mocking wasn't me asking a favor — it was me protecting their SLAs. Once it was framed as their protection rather than my convenience, the conversations flipped. I also kept the integration contract minimal so onboarding cost them almost nothing. The collaboration worked because I led with their incentive, not mine.",
+        notes: 'The CMS project (coordinating with the CMS team on API-vs-events) is an alternate. Core move: find what the other team cares about and frame your ask through it.',
+      },
+      {
+        q: 'Teammate was not contributing enough',
+        principle: 'Show empathy first, then constructive action, then escalation only if needed. Never throw the teammate under the bus. Assume a reason before assuming fault.',
+        answer:
+          "[VERIFY — anchor to a real instance] On one of the budget projects, a teammate's pieces were consistently landing late and it was starting to affect the timeline. Before assuming they weren't pulling weight, I talked to them one-on-one — and it turned out they were blocked on unfamiliarity with part of the codebase and hadn't wanted to flag it. So I paired with them for a couple of sessions to get them unblocked, and we broke their work into smaller, more visible chunks so progress was easier to track and easier to ask for help on. Their delivery recovered. My takeaway: 'not contributing' is usually 'blocked and not saying so.' Leading with a question instead of a judgment fixed it without it ever becoming a conflict.",
+        notes: 'The empathy-first framing is what interviewers want. Swap for a real instance if you have one; if not, keep it generic but plausible. Never name the teammate or make them look bad.',
+      },
+      {
+        q: 'Helped a teammate solve a technical challenge',
+        principle: 'Show you can transfer knowledge, not just solve. The hero is the teammate learning, not you rescuing.',
+        answer:
+          "[VERIFY — anchor to a real instance] A teammate was stuck debugging why data comparisons in a validation flow kept showing false mismatches. They'd been at it a while and were ready to conclude the data was genuinely diverging. I'd hit the same class of problem on the replay framework, so I sat with them and walked through it: the mismatches were on variable fields — generated IDs, timestamps — that differ by design between two runs. The fix wasn't in the data, it was in the comparison: normalize out the variable fields first. I didn't just hand them the answer — I walked them through why those fields differ, so they'd recognize the pattern next time. They shipped it, and later applied the same normalization idea somewhere else on their own. That's the part I care about — that they could reuse the reasoning.",
+        notes: 'Grounds in your real variable-field-normalization knowledge. The senior move: teach the pattern, not the fix. End on them reusing it independently.',
+      },
+      {
+        q: 'Mentoring or Coaching',
+        principle: 'Show structure and follow-through, not a one-off. Growth of the mentee is the outcome.',
+        answer:
+          "[VERIFY — anchor to a real instance] I've mentored a couple of newer engineers on the team, most concretely one junior who was ramping on our codebase. Rather than answer questions ad hoc, I set up a light structure — a regular check-in, and I'd assign them a real but scoped piece of work with me available as backup. My rule was to never just give the answer: I'd ask what they'd tried and where their mental model broke, so they built the debugging muscle instead of a dependency on me. Over a few months they went from needing hand-holding to owning features and reviewing others' code. Watching that shift — from consuming answers to producing them — is genuinely one of the more satisfying parts of the job, and it's something I want more of in my next role.",
+        notes: 'Connects to your next-role-priorities answer (growing people). Emphasize structure + the never-just-give-the-answer rule.',
+      },
+    ],
+  },
+  {
+    category: 'Conflict & Disagreement',
+    questions: [
+      {
+        q: 'Conflict with a teammate',
+        principle: 'Disagreement over an idea, resolved with data and shared goals. Not personal. Show you can disagree and commit.',
+        answer:
+          "[VERIFY — anchor to a real technical disagreement] On the replay framework, a teammate and I disagreed on how to handle downstream calls — they wanted to allow real reads and writes through with idempotency guards, and I argued for mocking writes entirely. It was a real disagreement because their approach would have given more realistic end-to-end validation. I didn't push it as opinion versus opinion; I laid out the concrete risk: not every downstream was guaranteed idempotent, so a replayed write could corrupt real production state, and the blast radius of that on financial data was unacceptable. We walked through the failure cases together, and once it was framed as 'what's the worst that happens if we're wrong,' we aligned on mocking writes and letting reads pass through. The key was making it about the shared goal — zero customer impact — not about who was right.",
+        notes: 'Grounds in a real design axis of your project. The move: convert opinion-vs-opinion into a shared risk analysis. Disagree, then align on the goal.',
+      },
+      {
+        q: 'Disagreement with manager',
+        principle: 'Show respectful pushback with reasoning, willingness to disagree-and-commit if overruled. Never insubordinate, never a pushover.',
+        answer:
+          "[VERIFY — anchor to a real instance] There was a point where there was pressure to ship a risky change on a tighter timeline than I was comfortable with, before the replay validation was fully in place. I disagreed, and I said so directly — but with reasoning, not resistance: I laid out the specific failure modes we'd be blind to without the validation, and what a customer-facing incident on financial data would cost versus the time we'd save. I also came with an option, not just an objection — a staged path that de-risked the most dangerous part first. My manager and I talked it through and adjusted the plan. If I'd been overruled after making my case, I'd have committed fully — disagreeing and then committing is part of the job. But the way to earn that pushback being taken seriously is to bring reasoning and an alternative, not just a no.",
+        notes: 'Balance: strong enough to show a spine, humble enough to show disagree-and-commit. Always bring an alternative, not just an objection.',
+      },
+      {
+        q: 'Handling difficult colleague',
+        principle: 'Show maturity and de-escalation. Focus on the work, separate the person from the friction. Never vent.',
+        answer:
+          "[VERIFY — anchor if real] I try to assume good intent and keep everything anchored to the work rather than the friction. In one case, a colleague was consistently combative in reviews — sharp comments, pushing back hard on approach. Rather than match the tone or take it personally, I took it offline: I asked to talk through their concerns directly, and it turned out a lot of the sharpness was them caring about a part of the system they felt protective of. Once I understood that, I started looping them in earlier on decisions that touched their area, so they felt consulted rather than presented-with. The friction dropped a lot. My approach is to look for the legitimate concern underneath the difficult delivery, and address that.",
+        notes: 'Never make it sound like you have enemies. Look for the legitimate concern under the difficult delivery is the mature framing.',
+      },
+    ],
+  },
+  {
+    category: 'Problem Solving',
+    questions: [
+      {
+        q: 'Choosing best solution',
+        principle: 'Show a structured evaluation: options, criteria, tradeoff, decision. The replay data-validation choice is perfect.',
+        answer:
+          "Best example is how I validate data parity in the replay framework. The naive option — diffing whole database tables between the two systems — is correct but completely infeasible at terabyte scale, and mostly meaningless because 99.99% of rows have nothing to do with the request being validated. I needed to compare exactly the rows one request touched. The insight was that a relational schema is really a graph — rows are nodes, foreign keys are edges — so the rows a single write touches form a small connected subgraph hanging off one parent record. I traverse that with a breadth-first search from the request's parent record, bounded by a time window, which gives me exactly the impacted rows in a cost proportional to what the request touched — tens of rows, not the whole table. I chose it because it was the only option that was both correct and feasible at scale. The criteria were: correctness, cost at 32TB, and semantic meaningfulness — and the graph traversal was the only one that satisfied all three.",
+        notes: 'Your strongest structured-problem-solving story. The schema-is-a-graph insight is the impressive part — land it clearly.',
+      },
+      {
+        q: 'Production outage handling',
+        principle: 'Calm, structured: detect → mitigate → root-cause → prevent. Show you stop the bleeding before finding the cause.',
+        answer:
+          "[VERIFY — anchor to a real incident, or frame honestly] My instinct on any production issue is mitigate first, diagnose second — stop customer impact before satisfying curiosity about the cause. On the resiliency work for our cross-service sync, the whole design was built around exactly this kind of failure: when a call to the customer-management service times out mid-operation, you're in an unknown state — the write may have succeeded or failed. The wrong move is to guess. So the pattern I built was: detect the failure within a bounded timeout, treat the outcome as unknown, then reconcile by reading the actual downstream state before taking any corrective action — because blindly rolling back a call that actually succeeded creates the opposite inconsistency. That reconcile-before-you-act discipline is exactly how I approach outages: contain, find ground truth, then act on facts, not assumptions.",
+        notes: 'If you have a real outage you personally handled, use it. Otherwise this honestly frames your resiliency work as your outage philosophy. Mitigate before diagnose is the key phrase.',
+      },
+      {
+        q: 'Made decision with incomplete information',
+        principle: 'Show you can act under uncertainty with a reversible bet + a way to learn. Not reckless, not paralyzed.',
+        answer:
+          "The entire timeout-handling design in the resiliency project is a decision under incomplete information — that's literally the problem. When a cross-service call times out, you fundamentally cannot know whether it succeeded; the information is unavailable by nature. The wrong response is to freeze or to guess. What I did was design the system to make the missing information discoverable: every call carries a correlation ID, so after a timeout I can go read the actual state and turn 'unknown' into 'known' before acting. Where I couldn't fully resolve it, I made the corrective action safe under either outcome — idempotent retries that do no harm if the original actually succeeded. That's my general approach to incomplete information: prefer decisions that are either reversible or that create a path to the missing facts, rather than betting big on a guess.",
+        notes: 'Reframes the CMS reconciliation work as decision-under-uncertainty — natural fit. Reversible bet or a path to the missing facts is the principle.',
+      },
+      {
+        q: 'Automating repetitive tasks',
+        principle: 'The whole traffic replay framework IS this answer — it automated away thousands of hours of manual regression testing.',
+        answer:
+          "The traffic replay framework is fundamentally an automation story. Before it, validating a risky backend change meant huge amounts of manual regression testing — engineers hand-crafting test cases that could never cover the real shape of production traffic, and still leaving blind spots. I automated the whole validation loop: capture real production traffic, replay it against the changed system, and automatically compare responses, data, and latency — surfacing regressions as a report instead of as a customer incident. It saved on the order of a thousand-plus hours of manual regression work across initiatives [VERIFY exact figure], but the bigger win was qualitative — it turned 'test what we thought of and hope' into 'validated against real traffic before release.' I look for exactly these leverage points: repetitive, error-prone manual work that, if automated well, changes not just the effort but the confidence level of the whole team.",
+        notes: 'Verify the 1000+ hours figure against your resume. The qualitative reframe (changed the confidence level, not just the effort) is the senior touch.',
+      },
+    ],
+  },
+  {
+    category: 'Adaptability & Learning',
+    questions: [
+      {
+        q: 'Quickly learning a new technology',
+        principle: 'Show a learning method, not just "I learned X." How you ramp is the transferable signal.',
+        answer:
+          "The replay framework forced me to ramp fast on a stack I hadn't used deeply — GoReplay for capture, Envoy and Wiremock for downstream mocking, Kafka for the transport, all at once. My method is to learn from the constraint inward rather than reading docs end to end: I started from what the system had to guarantee — capture HTTP-level traffic without touching the app, mock writes with zero blast radius, pair requests with responses reliably — and then learned exactly the part of each tool that served that guarantee. For Kafka, that meant going deep on partitioning and ordering because request-response pairing depended on it, and staying shallow on the rest until I needed it. Learning against a concrete requirement makes it stick, and it stops you drowning in a tool's full surface area. Within a few weeks I understood these well enough to make real architectural decisions with them.",
+        notes: 'Learn from the constraint inward is a genuinely good, memorable framing of a learning method. That method IS the answer.',
+      },
+      {
+        q: 'Worked outside your comfort zone',
+        principle: 'Show you sought the stretch, not that you were forced. The AI import or the infra work both fit.',
+        answer:
+          "[VERIFY — pick AI import or infra] The AI-assisted budget import pushed me outside my comfort zone. My strength is backend and systems; this dropped me into the seam between a probabilistic AI service and a deterministic financial record, which meant I had to get genuinely fluent in things I hadn't worked with — confidence scoring, why extraction is probabilistic, how semantic matching differs from string equality, the async patterns you need because LLM calls are slow and variable. I leaned into it rather than staying in the part I already knew: I made sure I understood why the AI behaved the way it did, so I could design a UI that made it structurally impossible to let a low-confidence match land in a financial record unreviewed. The discomfort was the point — I came out able to reason about AI systems, which is a gap I deliberately wanted to close.",
+        notes: 'Frame the stretch as something you sought. Verify which project you actually stretched on most and use that one.',
+      },
+      {
+        q: 'Enhancing technical knowledge',
+        principle: 'Show deliberate, ongoing learning tied to real work — not passive "I read blogs."',
+        answer:
+          "I learn most durably by going deeper on the systems I'm actually building rather than studying in the abstract. Concretely: the replay and resiliency work pushed me deep into distributed systems — I went and properly learned the distributed-transaction landscape, 2PC versus saga versus outbox, not as trivia but so I could correctly name what my own system was and defend why I didn't use the alternatives. I do the same with fundamentals under whatever I'm touching — when I worked on the database migration validation, I went deep on isolation levels, collation semantics, sequence handling, because bugs live in exactly those gaps between engines. My pattern is: whenever I hit something I'm using but can't explain from first principles, I treat that as the signal to go learn it properly, because that gap is exactly where an interviewer — or a production incident — will find me.",
+        notes: 'The gap-between-using-and-explaining = signal-to-learn framing shows genuine engineering maturity. Ties to how you actually prepped.',
+      },
+    ],
+  },
+  {
+    category: 'Time Management & Prioritization',
+    questions: [
+      {
+        q: 'Managing multiple tasks with deadlines',
+        principle: 'Show a prioritization framework (impact × risk, or reversibility), not just "I made a list."',
+        answer:
+          "I prioritize by blast radius and reversibility, not by what's loudest. Concretely, during the project budgets work I was juggling the DataGrid performance work, the migration pipeline, and coordinating the reporting source switch — all with the same rough deadline. I sequenced by asking two questions of each: what's the cost if this is wrong, and how hard is it to reverse? The reporting source switch and migration touched financial correctness for existing users and were hard to undo, so they got my focus and the most validation. The DataGrid perf work was important but lower-risk and more reversible, so it could tolerate being second. I also front-loaded the things other people were blocked on, so I wasn't the bottleneck for the team. The framework matters more than the list — urgent and important aren't the same, and reversibility tells you where to spend your caution.",
+        notes: 'The blast-radius × reversibility framework is the senior signal. Anchor to real concurrent work — budgets is a good fit.',
+      },
+      {
+        q: 'Time when you missed a deadline',
+        principle: 'Own it without excuses, show what you learned and changed. Never blame others. The lesson is the point.',
+        answer:
+          "[VERIFY — anchor to a real slip] On one project, a piece I owned slipped past the date I'd committed to. The honest root cause was that I'd underestimated the integration complexity — specifically the edge cases in how the change interacted with existing behavior — and I hadn't surfaced the risk early enough, so by the time it was clearly going to be late, there wasn't much runway to adjust. I owned it directly with my lead rather than letting it drift, we re-scoped to ship the safe core on time and fast-follow the rest, and it landed without customer impact. The real lesson wasn't about working faster — it was about surfacing risk earlier. Now I flag 'this might slip and here's why' the moment I smell it, not when it's certain, because early visibility gives everyone options that a late surprise doesn't.",
+        notes: 'The lesson — surface risk early, not when it is certain — is what they are grading. Own the miss cleanly, no blame, show the behavior change.',
+      },
+    ],
+  },
+  {
+    category: 'Leadership & Initiative',
+    questions: [
+      {
+        q: 'Leading without asking',
+        principle: 'The traffic replay framework started as YOUR initiative to fill a gap nobody assigned. That IS this answer.',
+        answer:
+          "The replay framework is exactly this. Nobody assigned it — I saw the gap. We had high-risk migrations coming and no reliable way to validate them against real customer traffic, and I was uncomfortable with the level of blind risk we were carrying. Rather than wait for someone to solve it, I scoped the idea, prototyped enough to prove it was feasible, and brought a concrete proposal to my lead instead of just raising a concern. Then I drove it across the teams whose buy-in I needed. The initiative wasn't just building it — it was recognizing that the risk was real before it turned into an incident, and taking ownership of a problem that technically wasn't anyone's assigned job. It ended up being used across multiple migrations. I've learned that the highest-leverage work is often the thing you notice is missing and decide to own.",
+        notes: 'Your single best initiative story. Emphasize: saw the gap, prototyped proof, brought a proposal not a complaint. That sequence is the senior signal.',
+      },
+      {
+        q: 'Going above and beyond',
+        principle: 'Show discretionary effort that created outsized impact. The reusability of the replay framework fits — you built a platform, not a one-off.',
+        answer:
+          "When I built the replay framework, the minimum ask was to validate one specific migration. I could have built a narrow, throwaway tool for exactly that one job. Instead I built it as a general-purpose platform — protocol-agnostic capture, a reusable comparison engine, configuration-driven onboarding — because I could see the same validation gap would exist for the next risky change, and the one after that. That was more work up front for a problem nobody was asking me to solve yet. But it meant the framework went on to back multiple initiatives — a database migration, a Hibernate upgrade, and others — and became the way the org de-risks this class of change. Going above and beyond, to me, isn't heroics or hours; it's solving the general problem when you were only asked to solve the specific one, when you can see the leverage.",
+        notes: 'Solve the general problem when asked for the specific one is a crisp, senior definition of above-and-beyond. Much stronger than I worked weekends.',
+      },
+    ],
+  },
+  {
+    category: 'Handling Failure & Feedback',
+    questions: [
+      {
+        q: 'Receiving critical feedback',
+        principle: 'Show you take it non-defensively, act on it, and it made you better. Pick real, non-fatal feedback.',
+        answer:
+          "[VERIFY — anchor to real feedback] A piece of feedback I got that stuck was that I sometimes went deep into building before I'd socialized the approach widely enough — so I'd have a strong solution, but stakeholders hadn't been brought along, and I'd have to backtrack to get alignment. My first instinct was mild defensiveness — the solution was good — but the feedback was fair: being right isn't the same as being aligned. So I changed how I sequence: now I socialize the approach and the tradeoffs early, in a lightweight way, before I've sunk real time into building. It actually makes the building faster because I hit fewer late-stage 'wait, why didn't you consider X' moments. I've come to value that kind of feedback specifically because it catches blind spots I can't see myself.",
+        notes: 'Pick feedback that is real but not disqualifying — a working-style thing, not a competence thing. Show the non-defensive turn and the concrete change.',
+      },
+      {
+        q: 'Giving constructive feedback',
+        principle: 'Show tact + directness. Specific, kind, actionable. Focus on behavior and impact, not the person.',
+        answer:
+          "[VERIFY — anchor if real] I gave a teammate feedback once that their PRs were technically solid but so large and unsegmented that reviewers couldn't give them good review — things were slipping through because nobody could hold a 900-line diff in their head. I made it specific and about impact, not character: 'when the PR is this big, I can't review it properly, so we're both losing the safety net of review.' And I made it actionable — I suggested breaking work into stacked, smaller PRs and offered to show them how I structure mine. I delivered it privately and framed it as 'here's something that'll make your work land better,' not 'here's what you're doing wrong.' They took it well and their PRs got much more reviewable. My rule for feedback: specific, about impact, actionable, and private.",
+        notes: 'The four-part rule (specific / about impact / actionable / private) is the memorable takeaway. Behavior not character.',
+      },
+      {
+        q: 'Delivering under challenge',
+        principle: 'Show grit + judgment under real constraint. The AU launch (10+ teams, hard date) or a tight migration fits.',
+        answer:
+          "[VERIFY — AU launch or a migration] The Australia market launch was a real delivery-under-pressure situation — a hard launch date, over ten dependent teams, and a new market where a botched first impression against established competitors would be hard to recover from. The challenge was coordination under a fixed deadline with no authority over most of the teams involved. I helped drive it by making readiness objective rather than a matter of opinion: explicit per-team gates, a clear pre-launch cutoff, and daily triage of blockers so nothing festered. The judgment call under pressure was what to gate hardest on — I pushed to gate on the irreversible things, upgrade safety and financial-analytics correctness, and let lower-risk polish flex. It launched on time with no critical issues. Delivering under challenge, for me, is mostly about making the plan legible and gating your caution where the cost of being wrong is highest.",
+        notes: 'AU launch is the natural fit. The judgment signal: gate hardest on the irreversible things. Verify your actual role/contribution on AU before over-claiming.',
+      },
+      {
+        q: 'Time when you failed',
+        principle: 'A real failure, owned cleanly, with a genuine lesson. Not a humblebrag. The vulnerability + the growth is the point.',
+        answer:
+          "[VERIFY — anchor to a real failure] Early on, I built a piece of a feature the way I thought was right without validating my assumptions about how users actually worked with it — and it turned out I'd optimized for a workflow that wasn't the common one. It shipped, got limited traction for the effort I'd put in, and I had to rework a meaningful part of it. The failure was real: I'd fallen in love with my solution before confirming the problem. What I took from it is that I now front-load validating the assumption, not just the implementation — I'll spend time up front confirming 'is this actually the problem, and is this actually how people hit it' before I commit to a design. It made me a better engineer specifically because it was a bit humbling — it broke the habit of assuming my model of the problem was correct.",
+        notes: 'Must be a REAL failure with a real cost — interviewers can smell a fake one. Fell in love with the solution before confirming the problem is relatable, non-fatal, with a genuine lesson.',
+      },
+    ],
+  },
+  {
+    category: 'Communication Skills',
+    questions: [
+      {
+        q: 'Explaining to non-technical',
+        principle: 'Show you can translate via analogy and audience-framing. Pick a genuinely technical thing you simplified.',
+        answer:
+          "I had to explain the replay framework to non-technical stakeholders to justify funding a parallel production stack. The technical version — sidecars, traffic mirroring, downstream mocking — means nothing to them. So I used an analogy: it's like a flight simulator for our production system. We take the real conditions pilots actually face — real customer traffic — and let a new version of the plane fly through them in a simulator, where a crash hurts no one, before we ever put real passengers on it. Then I connected it to what they cared about: this is how we make risky changes without betting the customer experience on them. The principle I use is to lead with what the listener cares about — for them it was risk and customer trust, not architecture — and reach for an analogy from a world they already understand. Framing for the audience is most of the work.",
+        notes: 'The flight-simulator analogy is genuinely good and reusable. Principle: lead with what THEY care about, borrow an analogy from their world.',
+      },
+      {
+        q: 'Presenting to leadership',
+        principle: 'Show you lead with the decision/ask and the impact, not the technical journey. Executives want the "so what" first.',
+        answer:
+          "When I've presented to leadership — for instance to get buy-in and resourcing for the replay framework — I've learned to invert how engineers naturally talk. My instinct is to build up from the technical detail to the conclusion; leadership needs the opposite. So I lead with the decision and the stakes: 'we're carrying real risk on these migrations, here's a way to eliminate it, here's what it costs and what it saves,' and I put the number and the ask in the first thirty seconds. Then I go one level down into how it works, and I keep the deep technical detail in reserve for questions rather than in the main line. I also frame everything in their terms — risk reduction, customer-facing incidents avoided, engineering hours saved — not in terms of the architecture I find interesting. Conclusion first, tailored to what they're deciding, detail on demand. That shift made my asks land much better.",
+        notes: 'Conclusion first, detail on demand is the executive-communication principle. The contrast with engineer-instinct (build up vs. lead with so-what) shows self-awareness.',
+      },
+    ],
+  },
+];
+
+/* ============================================================================
  * STYLES
  * ============================================================================
  * Editorial/refined dark theme. Serif display (Fraunces) + monospace accent
@@ -3475,7 +3753,7 @@ const css = `
     display: inline-block;
     margin-left: 10px;
     padding: 2px 8px;
-    background: var(--accent-subtle);
+    background: var(--paper-warm);
     color: var(--accent);
     font-family: var(--mono);
     font-size: 10px;
@@ -3484,6 +3762,212 @@ const css = `
     text-transform: uppercase;
     border-radius: 3px;
     vertical-align: middle;
+    border: 1px solid var(--rule);
+  }
+  .pf-tab-badge.hr { color: var(--tier-2); }
+
+  /* ============================== HR ROUND ============================== */
+  .pf-hr-shell {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    gap: 56px;
+    margin-top: 8px;
+  }
+  .pf-hr-side {
+    position: sticky;
+    top: 24px;
+    align-self: start;
+    max-height: calc(100vh - 48px);
+    overflow-y: auto;
+    padding-right: 8px;
+  }
+  .pf-hr-cat-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .pf-hr-cat-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    background: transparent;
+    border: none;
+    border-left: 2px solid transparent;
+    padding: 9px 12px;
+    text-align: left;
+    font-family: var(--body);
+    font-size: 13.5px;
+    color: var(--ink-faded);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .pf-hr-cat-item:hover { color: var(--ink); }
+  .pf-hr-cat-item.active {
+    color: var(--ink);
+    border-left-color: var(--accent);
+    font-weight: 500;
+  }
+  .pf-hr-cat-name { min-width: 0; }
+  .pf-hr-cat-count {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--accent);
+    opacity: 0.7;
+    flex-shrink: 0;
+  }
+  .pf-hr-main { min-width: 0; }
+  .pf-hr-header { margin-bottom: 40px; }
+  .pf-hr-title {
+    font-family: var(--display);
+    font-size: 46px;
+    font-weight: 400;
+    letter-spacing: -0.02em;
+    line-height: 1.05;
+    color: var(--ink);
+    margin: 8px 0 18px;
+  }
+  .pf-hr-framing {
+    font-family: var(--body);
+    font-size: 15px;
+    line-height: 1.65;
+    color: var(--ink-soft);
+    max-width: 680px;
+    padding: 18px 22px;
+    background: var(--fu-bg);
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--accent);
+    border-radius: 2px;
+  }
+  .pf-hr-framing strong { color: var(--accent); font-weight: 600; }
+  .pf-hr-category { margin-bottom: 40px; }
+  .pf-hr-cat-head {
+    font-family: var(--mono);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--accent);
+    margin-bottom: 18px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--rule);
+    font-weight: 600;
+  }
+  .pf-hr-q {
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    margin-bottom: 12px;
+    background: var(--paper-warm);
+    overflow: hidden;
+    transition: border-color 0.15s ease;
+  }
+  .pf-hr-q.open { border-color: var(--accent); }
+  .pf-hr-q-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    background: transparent;
+    border: none;
+    padding: 16px 20px;
+    text-align: left;
+    cursor: pointer;
+    font-family: var(--display);
+    font-size: 17px;
+    font-weight: 500;
+    color: var(--ink);
+    letter-spacing: -0.005em;
+  }
+  .pf-hr-q-head:hover { color: var(--accent); }
+  .pf-hr-q-chevron {
+    font-family: var(--mono);
+    font-size: 18px;
+    color: var(--accent);
+    width: 16px;
+    flex-shrink: 0;
+  }
+  .pf-hr-q-title { flex: 1; min-width: 0; }
+  .pf-hr-verify-badge {
+    font-family: var(--mono);
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--tier-2);
+    border: 1px solid var(--tier-2);
+    border-radius: 3px;
+    padding: 2px 6px;
+    flex-shrink: 0;
+    opacity: 0.8;
+  }
+  .pf-hr-q-body {
+    padding: 4px 20px 22px 48px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .pf-hr-principle {
+    font-family: var(--body);
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--ink-mid);
+    font-style: italic;
+    padding: 10px 14px;
+    background: var(--paper);
+    border-radius: 3px;
+    border: 1px solid var(--rule);
+  }
+  .pf-hr-principle-label,
+  .pf-hr-notes-label {
+    display: block;
+    font-family: var(--mono);
+    font-size: 10px;
+    font-style: normal;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--accent);
+    margin-bottom: 6px;
+    font-weight: 600;
+  }
+  .pf-hr-answer {
+    font-family: var(--serif);
+    font-size: 15.5px;
+    line-height: 1.72;
+    color: var(--ink);
+  }
+  .pf-hr-notes {
+    font-family: var(--body);
+    font-size: 12.5px;
+    line-height: 1.6;
+    color: var(--ink-mid);
+    padding: 12px 14px;
+    background: var(--paper);
+    border-radius: 3px;
+    border-left: 2px solid var(--tier-2);
+  }
+  .pf-hr-notes-label { color: var(--tier-2); }
+
+  @media (max-width: 900px) {
+    .pf-hr-shell { grid-template-columns: 1fr; gap: 28px; }
+    .pf-hr-side {
+      position: static;
+      max-height: none;
+      border-bottom: 1px solid var(--rule);
+      padding-bottom: 20px;
+    }
+    .pf-hr-cat-list { flex-direction: row; flex-wrap: wrap; gap: 6px; }
+    .pf-hr-cat-item {
+      border-left: none;
+      border: 1px solid var(--rule);
+      border-radius: 999px;
+      padding: 6px 12px;
+      font-size: 12.5px;
+    }
+    .pf-hr-cat-item.active {
+      border-left: 1px solid var(--accent);
+      border-color: var(--accent);
+    }
+    .pf-hr-title { font-size: 34px; }
+    .pf-hr-q-body { padding-left: 20px; }
+    .pf-hr-q-head { font-size: 15px; }
   }
 
   /* ============================== DEEP DIVE ============================== */
@@ -4886,6 +5370,145 @@ const DeepDive = ({ projects, selectedId, onSelect }) => {
 };
 
 /* ============================================================================
+ * HR QUESTIONS COMPONENT
+ * ========================================================================== */
+
+const HRQuestions = () => {
+  const [activeCategory, setActiveCategory] = useState(HR_QUESTIONS[0].category);
+  const [openQ, setOpenQ] = useState({});
+  const [query, setQuery] = useState('');
+
+  const toggle = (key) => setOpenQ((s) => ({ ...s, [key]: !s[key] }));
+
+  const q = query.trim().toLowerCase();
+  const categoriesToShow = q
+    ? HR_QUESTIONS.map((c) => ({
+        ...c,
+        questions: c.questions.filter(
+          (item) =>
+            item.q.toLowerCase().includes(q) ||
+            item.answer.toLowerCase().includes(q) ||
+            (item.principle || '').toLowerCase().includes(q)
+        ),
+      })).filter((c) => c.questions.length > 0)
+    : HR_QUESTIONS;
+
+  const active = q
+    ? null
+    : HR_QUESTIONS.find((c) => c.category === activeCategory);
+
+  const jumpCategory = (cat) => {
+    setActiveCategory(cat);
+    setQuery('');
+    const el = document.getElementById('hr-main');
+    if (el) {
+      const top = el.getBoundingClientRect().top + window.scrollY - 84;
+      window.scrollTo({ top, behavior: 'smooth' });
+    }
+  };
+
+  const renderQuestion = (item, key) => {
+    const isOpen = !!openQ[key];
+    const hasVerify = item.answer.includes('[VERIFY') || (item.notes || '').includes('VERIFY');
+    return (
+      <div key={key} className={`pf-hr-q ${isOpen ? 'open' : ''}`}>
+        <button className="pf-hr-q-head" onClick={() => toggle(key)}>
+          <span className="pf-hr-q-chevron">{isOpen ? '−' : '+'}</span>
+          <span className="pf-hr-q-title">{item.q}</span>
+          {hasVerify && <span className="pf-hr-verify-badge">verify</span>}
+        </button>
+        {isOpen && (
+          <div className="pf-hr-q-body">
+            {item.principle && (
+              <div className="pf-hr-principle">
+                <span className="pf-hr-principle-label">Strategy</span>
+                {item.principle}
+              </div>
+            )}
+            <div className="pf-hr-answer">{item.answer}</div>
+            {item.notes && (
+              <div className="pf-hr-notes">
+                <span className="pf-hr-notes-label">Delivery notes</span>
+                {item.notes}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div className="pf-hr-shell">
+      {/* Sidebar: search + category nav */}
+      <aside className="pf-hr-side">
+        <div className="pf-dd-search-wrap">
+          <input
+            className="pf-dd-search"
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search questions…"
+          />
+          {query && (
+            <button className="pf-dd-search-clear" onClick={() => setQuery('')} aria-label="Clear">
+              ×
+            </button>
+          )}
+        </div>
+        <div className="pf-dd-side-label">Categories</div>
+        <div className="pf-hr-cat-list">
+          {HR_QUESTIONS.map((c) => (
+            <button
+              key={c.category}
+              className={`pf-hr-cat-item ${!q && activeCategory === c.category ? 'active' : ''}`}
+              onClick={() => jumpCategory(c.category)}
+            >
+              <span className="pf-hr-cat-name">{c.category}</span>
+              <span className="pf-hr-cat-count">{c.questions.length}</span>
+            </button>
+          ))}
+        </div>
+      </aside>
+
+      {/* Main */}
+      <div className="pf-hr-main" id="hr-main">
+        <div className="pf-hr-header">
+          <div className="pf-dd-eyebrow">Behavioral / HR Round · STAR-structured</div>
+          <h2 className="pf-hr-title">Famous Questions</h2>
+          <div className="pf-hr-framing">
+            Answers grounded in your real projects. Situations are real; the{' '}
+            <strong>[verify]</strong> markers flag specifics — numbers, quotes, names — to swap
+            for your actual memory before you say them. An interviewer probes a made-up detail
+            in two follow-ups, so keep the spine and make the specifics true.
+          </div>
+        </div>
+
+        {q ? (
+          categoriesToShow.length > 0 ? (
+            categoriesToShow.map((c) => (
+              <section key={c.category} className="pf-hr-category">
+                <div className="pf-hr-cat-head">{c.category}</div>
+                {c.questions.map((item, i) => renderQuestion(item, `${c.category}-${i}`))}
+              </section>
+            ))
+          ) : (
+            <div className="pf-dd-side-empty">No question matches “{query}”.</div>
+          )
+        ) : (
+          active && (
+            <section className="pf-hr-category">
+              <div className="pf-hr-cat-head">{active.category}</div>
+              {active.questions.map((item, i) => renderQuestion(item, `${active.category}-${i}`))}
+            </section>
+          )
+        )}
+      </div>
+    </div>
+  );
+};
+
+/* ============================================================================
  * ROOT
  * ========================================================================== */
 
@@ -4916,6 +5539,7 @@ const Projects = () => {
       if (e.key === 't') setTheme((t) => (t === 'light' ? 'dark' : 'light'));
       if (e.key === 'o') setView('overview');
       if (e.key === 'd') setView('deep-dive');
+      if (e.key === 'h') setView('hr-round');
       if (view === 'deep-dive' && (e.key === '[' || e.key === ']')) {
         const idx = PROJECTS.findIndex((p) => p.id === selectedDeepDiveId);
         if (e.key === '[' && idx > 0) setSelectedDeepDiveId(PROJECTS[idx - 1].id);
@@ -5032,12 +5656,19 @@ const Projects = () => {
             Deep <em>dive</em>
             <span className="pf-tab-badge">Staff-level</span>
           </button>
+          <button
+            className={`pf-tab ${view === 'hr-round' ? 'active' : ''}`}
+            onClick={() => setView('hr-round')}
+          >
+            HR <em>round</em>
+            <span className="pf-tab-badge hr">Behavioral</span>
+          </button>
           <div className="pf-kbd-hint">
-            <kbd>o</kbd>/<kbd>d</kbd> views · <kbd>[</kbd><kbd>]</kbd> projects · <kbd>t</kbd> theme
+            <kbd>o</kbd>/<kbd>d</kbd>/<kbd>h</kbd> views · <kbd>[</kbd><kbd>]</kbd> projects · <kbd>t</kbd> theme
           </div>
         </div>
 
-        {view === 'overview' ? (
+        {view === 'overview' && (
           <>
             {/* FILTERS */}
             <div className="pf-filters">
@@ -5065,7 +5696,9 @@ const Projects = () => {
               <span>{filtered.length} of {PROJECTS.length} shown</span>
             </footer>
           </>
-        ) : (
+        )}
+
+        {view === 'deep-dive' && (
           <>
             <DeepDive
               projects={PROJECTS}
@@ -5075,6 +5708,16 @@ const Projects = () => {
             <footer className="pf-footer" style={{ marginTop: 64 }}>
               <span>Deep dive · {deepDiveCount} projects</span>
               <span>Use when interviewer goes 3+ layers deep</span>
+            </footer>
+          </>
+        )}
+
+        {view === 'hr-round' && (
+          <>
+            <HRQuestions />
+            <footer className="pf-footer" style={{ marginTop: 64 }}>
+              <span>HR round · {HR_QUESTIONS.reduce((n, c) => n + c.questions.length, 0)} questions</span>
+              <span>[VERIFY] markers = swap in your real specifics</span>
             </footer>
           </>
         )}
