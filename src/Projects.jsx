@@ -2838,24 +2838,81 @@ const HR_QUESTIONS = [
     questions: [
       {
         q: 'Most proud project',
-        principle: 'Pick the one with the most depth AND clearest personal ownership. Traffic replay. Lead with impact, show the hard decision, end with what it taught you.',
-        answer:
-          "The traffic capture and replay framework. The problem: our project service handles around 100,000 customers a day of financial data, and we needed to make high-risk backend changes — a database migration, a Hibernate upgrade — with confidence that they wouldn't break real customer flows. Manual and automated tests only cover the cases you thought of; they can't reproduce the shape of real production traffic. So I built a framework that runs a passive parallel server with the change applied and replays real production traffic against it, comparing response parity, data correctness, and latency — all without ever touching a customer or a downstream system. The hardest decision was making blast radius zero by construction, not by convention: I mocked all downstream writes at the network layer with a proxy, so even a bug in the application code physically cannot reach production. It backed multiple migrations with zero customer-facing incidents. What I'm proudest of isn't the code — it's that I took it from an idea to a platform other teams used, and it changed how we ship risky changes.",
-        notes: 'This is your strongest project — own it fully. The "zero by construction not convention" line is the senior signal; land it. Have the BFS data-validation and TLS-sandwich details ready for follow-ups.',
+        options: [
+          {
+            label: 'Traffic Replay',
+            principle: 'Your strongest project — most depth + clearest ownership. Lead with impact, show the hard decision, end with what it taught you.',
+            answer:
+              "The traffic capture and replay framework. The problem: our project service handles around 100,000 customers a day of financial data, and we needed to make high-risk backend changes — a database migration, a Hibernate upgrade — with confidence they wouldn't break real customer flows. Manual and automated tests only cover cases you thought of; they can't reproduce the shape of real production traffic. So I built a framework that runs a passive parallel server with the change applied and replays real production traffic against it, comparing response parity, data correctness, and latency — without ever touching a customer or a downstream system. The hardest decision was making blast radius zero by construction, not by convention: I mocked all downstream writes at the network layer with a proxy, so even a bug in the application code physically cannot reach production. It backed multiple migrations with zero customer-facing incidents. What I'm proudest of isn't the code — it's that I took it from an idea to a platform other teams used, and it changed how we ship risky changes.",
+            notes: 'Default choice. The "zero by construction not convention" line is the senior signal. Have BFS data-validation and TLS-sandwich ready for follow-ups.',
+          },
+          {
+            label: 'CMS Resiliency',
+            principle: 'Use when the interviewer signals they want distributed-systems depth, or when you already told the replay story.',
+            answer:
+              "The resiliency layer for our cross-service project sync. The root problem is subtle: a 'project' in QuickBooks is actually two records in two systems that must agree — a project record in our service and a sub-customer record in the customer-management service, linked by a reference. Every create, update, and inactivate has to land in both. The legacy design had two competing sync paths and, worse, treated a network timeout as a definite failure — when a timeout actually means the outcome is unknown, because the write may have succeeded and only the response was lost. So the systems drifted apart silently, one lost-response at a time. I worked on the redesign: collapse to one authoritative path, and treat every timeout as unknown — reconcile by reading the downstream's actual state before acting, then roll forward if it succeeded or compensate if it didn't. The subtlety I'm proudest of getting right is that you must reconcile before you compensate, because blindly rolling back a call that actually succeeded manufactures the opposite inconsistency. It cut sync failures by around 95%. I'm proud of it because the interesting work was entirely in reasoning about failure, not in the happy path.",
+            notes: 'The "reconcile before compensate" point is the senior signal here — it proves you operated the system. Verify your exact slice (STS consumer + reconciliation POC) before over-claiming ownership.',
+          },
+          {
+            label: 'Project Budgets',
+            principle: 'Use when the interviewer is product-minded or wants a customer-facing financial-systems story.',
+            answer:
+              "Project Budgets — decoupling internal cost from customer-facing estimates in QuickBooks. Before it, one form was the source of truth for both what you quote a customer and what a job costs you internally — which is the wrong mental model for construction and professional-services businesses, where internal cost is tracked at far finer granularity than a customer quote. I helped design and ship the separation: budgets became the source of truth for cost, estimates stayed the source of truth for income. What makes me proud of it isn't the UI — it's that changing a source of truth under a live financial product is terrifying, because it touches reporting, migrations, and downstream features. There were something like 1,400 memorized reports that depended on the old cost source, across multiple user cohorts each with a different migration path. Getting that transition to be safe, staged, and reversible — dual-mode reporting during rollout, cohort-by-cohort migration, full backward compatibility — without a single financial-correctness incident, is the part I'm proud of. It's the discipline of changing something load-bearing without anyone falling through the floor.",
+            notes: 'The "1,400 memorized reports across cohorts" specific grounds it. Frame the pride around safe migration of a source-of-truth, not around building a form.',
+          },
+        ],
       },
       {
         q: 'How you choose technologies',
-        principle: 'Show you reason from constraints, not hype. Name a real decision, the alternatives, and the tradeoff. Interviewers grade the reasoning, not the choice.',
-        answer:
-          "I start from the constraint, not the technology. Concrete example from the replay framework: for capturing traffic, I had to choose between instrumenting the application code, a sidecar with GoReplay, or a service-mesh mirror. I chose the sidecar — because the alternative, in-process capture, would have coupled the capture lifecycle to the application's release cycle and put my code in the customer's critical request path, where a bug could add latency or crash the app. The sidecar gave me an independent failure domain, independent rollout, and zero application changes. The cost was a small resource overhead and a network hop, which I accepted because safety and isolation were non-negotiable. That's my general pattern: name the invariant that can't be violated, then pick the option that protects it, and be explicit about what I'm trading away.",
-        notes: 'The reasoning structure — invariant → option that protects it → what I traded — matters more than the specific tech. Reusable for Kafka partition key, optimistic locking, API-vs-events.',
+        options: [
+          {
+            label: 'Traffic Replay',
+            principle: 'Reason from constraints, not hype. Name a real decision, the alternatives, the tradeoff. The reasoning structure is what they grade.',
+            answer:
+              "I start from the constraint, not the technology. Concrete example from the replay framework: for capturing traffic, I chose between instrumenting the application code, a sidecar with GoReplay, or a service-mesh mirror. I chose the sidecar — because the alternative, in-process capture, would have coupled the capture lifecycle to the application's release cycle and put my code in the customer's critical request path, where a bug could add latency or crash the app. The sidecar gave me an independent failure domain, independent rollout, and zero application changes. The cost was a small resource overhead and a network hop, which I accepted because safety and isolation were non-negotiable. My general pattern: name the invariant that can't be violated, pick the option that protects it, and be explicit about what I'm trading away.",
+            notes: 'The structure — invariant → option that protects it → what I traded — matters more than the tech.',
+          },
+          {
+            label: 'CMS (API vs Events)',
+            principle: 'Use for a distributed-systems flavored version of the same reasoning.',
+            answer:
+              "On the CMS sync redesign, the core technology decision was synchronous API versus event-driven for keeping the two systems in sync. Events were tempting — looser coupling, better scalability. But I started from the constraint: this is a user-facing action, and the user needs a deterministic outcome immediately, because their very next step depends on the project existing. Event-driven gives eventual consistency, which means a window where the user acts on a project that isn't fully there yet — unacceptable for the action itself. So the user-facing path is a synchronous API for the strong-consistency guarantee. But I didn't make it dogmatic: downstream systems that only need to *know* about the project, and tolerate a little staleness, get it through async events. Two different consistency requirements, two different mechanisms. The lesson: don't pick one technology for the whole system — decompose by the guarantee each part actually needs.",
+            notes: 'The "sync where the user waits, async where staleness is fine" decomposition is the senior signal. Ties to your real CMS decision matrix.',
+          },
+          {
+            label: 'Project Budgets (grid)',
+            principle: 'Use for a frontend/performance-flavored version.',
+            answer:
+              "On project budgets, a real technology choice was how to render the budget grid — up to 3,500 rows by 23 columns with a sub-200ms cell-edit requirement. The naive approach, a standard data table that re-renders on every keystroke, would blow the latency budget completely. I chose to reuse the existing FP&A virtualized DataGrid rather than build fresh — because the constraint was a hard perf SLA and that component had already solved virtual scrolling and edit-state isolation under exactly this kind of load. Building my own would have meant re-solving those, slower and buggier. The tradeoff was accepting its abstractions and extension points rather than having full control. I took it because the invariant — the latency SLA — was better served by a battle-tested component than by novelty. General rule: reuse when something already protects your hardest constraint; build only when nothing does.",
+            notes: 'The reuse-vs-build reasoning against a perf SLA. Grounds in the real 3500x23 grid and <200ms requirement.',
+          },
+        ],
       },
       {
         q: 'Leading a project',
-        principle: 'Leadership without authority is the SDE2 sweet spot. Show you drove clarity, sequencing, and unblocking — not that you managed people.',
-        answer:
-          "The clearest example is the traffic replay framework — I led it without any formal authority. It started as my proposal to solve a validation gap, and I had to bring along multiple stakeholders: the teams whose downstream services I needed to mock, the platform folks, and leadership who had to fund a parallel production stack. I led by turning a vague fear — 'we might break something in this migration' — into a concrete, staged plan with clear checkpoints, and by reframing the ask to each team in terms they cared about: I told the downstream teams that mocking their services protected them from doubled traffic, rather than asking them for a favor. When blockers came up across teams, I owned surfacing them fast and routing them to whoever could unblock. The framework shipped and backed multiple migrations. The lesson: leading without authority is mostly about converting ambiguity into a plan everyone can see, and making it obviously in each person's interest to help.",
-        notes: 'AU launch is your backup leadership story (10+ teams, gates, sequencing). Use whichever fits the follow-up better. Emphasize converting ambiguity into a shared plan.',
+        options: [
+          {
+            label: 'Traffic Replay',
+            principle: 'Leadership without authority is the SDE2 sweet spot. Show you drove clarity, sequencing, and unblocking — not that you managed people.',
+            answer:
+              "The clearest example is the traffic replay framework — I led it without any formal authority. It started as my proposal to solve a validation gap, and I had to bring along multiple stakeholders: the teams whose downstream services I needed to mock, platform folks, and leadership who had to fund a parallel production stack. I led by turning a vague fear — 'we might break something in this migration' — into a concrete, staged plan with clear checkpoints, and by reframing the ask to each team in terms they cared about: I told downstream teams that mocking their services protected them from doubled traffic, rather than asking a favor. When cross-team blockers came up, I owned surfacing them fast and routing them to whoever could unblock. It shipped and backed multiple migrations. The lesson: leading without authority is mostly about converting ambiguity into a plan everyone can see, and making it obviously in each person's interest to help.",
+            notes: 'Emphasize converting ambiguity into a shared plan.',
+          },
+          {
+            label: 'AU Launch',
+            principle: 'Use when the interviewer wants cross-team coordination at scale rather than a solo-initiative story.',
+            answer:
+              "The Australia market launch is my best cross-team leadership example. It involved over ten dependent teams, a hard launch date, and no authority over most of the people involved — a new-market launch where a botched first impression against established competitors would be hard to recover from. I helped drive it by making readiness objective instead of a matter of opinion: explicit per-team gates, a clear pre-production cutoff date, and a daily triage of cross-team blockers so nothing festered silently. The leadership judgment was deciding what to gate hardest on — I pushed to gate on the irreversible things, upgrade safety and financial-analytics correctness, and let lower-risk polish flex against the date. It launched on time with no critical issues. Leading at that scale isn't about authority — it's about making the state of the whole system legible so ten teams can self-coordinate against a shared, objective bar.",
+            notes: 'The "gate hardest on the irreversible things" judgment is the signal. Verify your actual role on AU before over-claiming — say "helped drive."',
+          },
+          {
+            label: 'Project Budgets',
+            principle: 'Use for a story about leading a technically complex feature through to launch.',
+            answer:
+              "On project budgets I led the frontend architecture and the migration strategy for a change that was far riskier than it looked — moving the source of truth for estimated cost. Leading it meant coordinating across the reporting team, the backend team, and multiple user cohorts with different migration paths. I drove clarity by making the risk concrete and shared: I mapped exactly which reports and cohorts were affected — including the roughly 1,400 memorized reports on the old source — so everyone was reasoning about the same blast radius. Then I sequenced the rollout so the highest-risk, hardest-to-reverse pieces got the most validation and shipped behind dual-mode reporting, and the lower-risk work followed. The feature launched with full backward compatibility and no financial-correctness incidents. Leading here was less about people management and more about making a scary migration legible and staged enough that the whole group could move on it with confidence.",
+            notes: 'Leadership-through-clarity on a risky migration. The specific "1,400 reports" number grounds it.',
+          },
+        ],
       },
     ],
   },
@@ -2864,16 +2921,35 @@ const HR_QUESTIONS = [
     questions: [
       {
         q: 'Cross-team collaboration',
-        principle: 'Name the tension between teams and how you resolved it through THEIR incentives, not authority.',
-        answer:
-          "On the replay framework, I needed downstream teams — payments, notifications, and others — to let me mock their services in the parallel stack. Their first instinct was hesitation: it was more surface area for them and they didn't own the project. The tension was real. I resolved it by reframing: replaying write traffic against their real services would double their load and risk corrupting their state, so mocking wasn't me asking a favor — it was me protecting their SLAs. Once it was framed as their protection rather than my convenience, the conversations flipped. I also kept the integration contract minimal so onboarding cost them almost nothing. The collaboration worked because I led with their incentive, not mine.",
-        notes: 'The CMS project (coordinating with the CMS team on API-vs-events) is an alternate. Core move: find what the other team cares about and frame your ask through it.',
+        options: [
+          {
+            label: 'Traffic Replay',
+            principle: 'Name the tension between teams and how you resolved it through THEIR incentives, not authority.',
+            answer:
+              "On the replay framework, I needed downstream teams — payments, notifications, and others — to let me mock their services in the parallel stack. Their first instinct was hesitation: more surface area for them, and they didn't own the project. The tension was real. I resolved it by reframing: replaying write traffic against their real services would double their load and risk corrupting their state, so mocking wasn't me asking a favor — it was me protecting their SLAs. Once it was framed as their protection rather than my convenience, the conversations flipped. I also kept the integration contract minimal so onboarding cost them almost nothing. It worked because I led with their incentive, not mine.",
+            notes: 'Core move: find what the other team cares about and frame your ask through it.',
+          },
+          {
+            label: 'CMS (with CMS team)',
+            principle: 'Use for collaboration on a shared architectural decision rather than a resource ask.',
+            answer:
+              "On the CMS sync redesign, the key collaboration was with the customer-management team, who owned the service I had to integrate against. The tension: I needed strong-consistency guarantees from their API for the user-facing path, and they had their own roadmap and constraints. Rather than push my design onto them, I brought the actual decision to them — I laid out the API-versus-events tradeoff with the concrete failure modes for each, and we worked through the consistency requirements together. The outcome — synchronous API for the user action, async events downstream — was genuinely a joint decision, which mattered because they had to support the contract long after I moved on. The collaboration worked because I treated their ownership as real and brought them a decision to make together, not a solution to rubber-stamp.",
+            notes: 'The move: respect the other team\'s ownership, bring a shared decision not a finished design. Grounds in your real CMS-team coordination.',
+          },
+          {
+            label: 'Consolidated Email (legal + backend)',
+            principle: 'Use for collaboration across non-engineering functions.',
+            answer:
+              "On the consolidated email feature, the interesting cross-team work was with two very different groups: the backend team, who weren't ready with the real APIs when I needed to build the frontend, and legal, who had to sign off on customer-facing email content. For the backend, instead of blocking on them, I built against mocked APIs matching the agreed contract, so both sides could move on their own timelines and integrate cleanly later. For legal, I treated their review as a hard merge gate rather than a last-minute checkbox — I looped them in early on the consolidated email wording and branding, so compliance was designed in, not bolted on. Collaborating across functions taught me to decouple where I can — mocks to unblock engineering dependencies — and to front-load the gates I can't move, like legal, so they never become a surprise at the end.",
+            notes: 'Shows collaboration beyond engineering. The decouple-with-mocks + front-load-the-gate moves are both real and senior.',
+          },
+        ],
       },
       {
         q: 'Teammate was not contributing enough',
         principle: 'Show empathy first, then constructive action, then escalation only if needed. Never throw the teammate under the bus. Assume a reason before assuming fault.',
         answer:
-          "[VERIFY — anchor to a real instance] On one of the budget projects, a teammate's pieces were consistently landing late and it was starting to affect the timeline. Before assuming they weren't pulling weight, I talked to them one-on-one — and it turned out they were blocked on unfamiliarity with part of the codebase and hadn't wanted to flag it. So I paired with them for a couple of sessions to get them unblocked, and we broke their work into smaller, more visible chunks so progress was easier to track and easier to ask for help on. Their delivery recovered. My takeaway: 'not contributing' is usually 'blocked and not saying so.' Leading with a question instead of a judgment fixed it without it ever becoming a conflict.",
+          "[VERIFY — adapt to your real instance] During the project budgets work, a teammate owned the reporting integration — wiring budget data into the existing report infrastructure — and their pieces kept landing late with the classic 'almost done' status for two sprints. It was starting to put the reporting cutover at risk. Before assuming they weren't pulling weight, I asked them to walk me through where they were — genuinely to understand, not to check up. It turned out they were stuck in the legacy reporting code, which is genuinely gnarly territory — a lot of implicit behavior, thin documentation — and they hadn't wanted to flag it because everyone else seemed to be moving fast. So we did two things: I paired with them for a couple of sessions to get them past the specific wall — I'd touched adjacent code and could shortcut a lot of their archaeology — and we re-cut their remaining work into smaller pieces with visible checkpoints, so 'stuck' would become visible in days, not sprints. Their delivery recovered, and the cutover held. My honest takeaway: 'not contributing' is usually 'blocked and not saying so,' and the fix is making it cheap to admit being stuck. Leading with a question instead of a judgment meant it never became a conflict at all.",
         notes: 'The empathy-first framing is what interviewers want. Swap for a real instance if you have one; if not, keep it generic but plausible. Never name the teammate or make them look bad.',
       },
       {
@@ -2885,10 +2961,10 @@ const HR_QUESTIONS = [
       },
       {
         q: 'Mentoring or Coaching',
-        principle: 'Show structure and follow-through, not a one-off. Growth of the mentee is the outcome.',
+        principle: 'Show structure and follow-through, not a one-off. Growth of the mentee is the outcome. One concrete teaching moment beats a vague summary.',
         answer:
-          "[VERIFY — anchor to a real instance] I've mentored a couple of newer engineers on the team, most concretely one junior who was ramping on our codebase. Rather than answer questions ad hoc, I set up a light structure — a regular check-in, and I'd assign them a real but scoped piece of work with me available as backup. My rule was to never just give the answer: I'd ask what they'd tried and where their mental model broke, so they built the debugging muscle instead of a dependency on me. Over a few months they went from needing hand-holding to owning features and reviewing others' code. Watching that shift — from consuming answers to producing them — is genuinely one of the more satisfying parts of the job, and it's something I want more of in my next role.",
-        notes: 'Connects to your next-role-priorities answer (growing people). Emphasize structure + the never-just-give-the-answer rule.',
+          "[VERIFY — adapt to your real mentee] When a new engineer joined our team, I owned their ramp-up on the budgeting codebase — which is genuinely hard to ramp on, because it mixes financial-correctness rules with a lot of state: budget versions, locking, sync between draft and published. I gave it structure instead of ad-hoc answers: a weekly check-in, and I sequenced their first tasks deliberately — first a read-only bug in the budget detail view so they learned the data flow with no risk, then a scoped fix in the grid, then a real feature slice. My rule was to never just give the answer. The moment that stuck with me: they hit a save failure that was actually an optimistic-locking conflict — the classic stale-version error — and instead of pointing at it, I asked them to trace what the server was comparing when it rejected the write. It took them a day, but they came back having understood the whole versioning model — why edits fork a revision, why the client carries a sync token. That one day bought months, because after that they could debug that entire class of problem alone. Within a quarter they were reviewing other people's PRs in that area. That shift — from consuming answers to producing them — is the actual outcome of mentoring, and it's something I want more of in my next role.",
+        notes: "The optimistic-lock teaching moment is grounded in your real budget versioning work (editSequence / syncToken) — that specificity is what makes it believable. Verify: swap in your actual mentee situation, keep the one-concrete-moment structure.",
       },
     ],
   },
@@ -2899,22 +2975,22 @@ const HR_QUESTIONS = [
         q: 'Conflict with a teammate',
         principle: 'Disagreement over an idea, resolved with data and shared goals. Not personal. Show you can disagree and commit.',
         answer:
-          "[VERIFY — anchor to a real technical disagreement] On the replay framework, a teammate and I disagreed on how to handle downstream calls — they wanted to allow real reads and writes through with idempotency guards, and I argued for mocking writes entirely. It was a real disagreement because their approach would have given more realistic end-to-end validation. I didn't push it as opinion versus opinion; I laid out the concrete risk: not every downstream was guaranteed idempotent, so a replayed write could corrupt real production state, and the blast radius of that on financial data was unacceptable. We walked through the failure cases together, and once it was framed as 'what's the worst that happens if we're wrong,' we aligned on mocking writes and letting reads pass through. The key was making it about the shared goal — zero customer impact — not about who was right.",
-        notes: 'Grounds in a real design axis of your project. The move: convert opinion-vs-opinion into a shared risk analysis. Disagree, then align on the goal.',
+          "[VERIFY — adapt to your real disagreement] On the replay framework, a backend teammate and I disagreed sharply on how to handle downstream write calls from the parallel server. He wanted to let real writes through but wrap every downstream in an idempotency check, arguing it gave us true end-to-end validation — which was a legitimate point. I argued for mocking all writes at the network layer instead. The disagreement got tense because we'd each half-built our approach. What broke the deadlock: instead of trading opinions, I proposed we list every downstream and check the actual guarantee. We found three of them had no idempotency guarantee at all — a replayed write there could double-charge or corrupt real state, on financial data. Once it was concrete failure cases on a whiteboard instead of 'my design versus yours,' he agreed the blast radius was unacceptable, and we aligned on mocking writes, passing reads through. What made it work was reframing from 'who's right' to 'what's the worst that happens if we're wrong' — and I made a point afterward to credit his idempotency idea, because we did use it for the read-consistency checks. Disagree hard on the idea, stay warm on the person.",
+        notes: 'The concrete detail — "three downstreams had no idempotency guarantee" — is what makes this believable. Verify the specifics but keep the shape: opinion-vs-opinion → shared failure-case analysis → align on the risk, credit their idea.',
       },
       {
         q: 'Disagreement with manager',
-        principle: 'Show respectful pushback with reasoning, willingness to disagree-and-commit if overruled. Never insubordinate, never a pushover.',
+        principle: 'Respectful pushback with reasoning, willingness to disagree-and-commit if overruled. Never insubordinate, never a pushover. Bring an alternative, not just a no.',
         answer:
-          "[VERIFY — anchor to a real instance] There was a point where there was pressure to ship a risky change on a tighter timeline than I was comfortable with, before the replay validation was fully in place. I disagreed, and I said so directly — but with reasoning, not resistance: I laid out the specific failure modes we'd be blind to without the validation, and what a customer-facing incident on financial data would cost versus the time we'd save. I also came with an option, not just an objection — a staged path that de-risked the most dangerous part first. My manager and I talked it through and adjusted the plan. If I'd been overruled after making my case, I'd have committed fully — disagreeing and then committing is part of the job. But the way to earn that pushback being taken seriously is to bring reasoning and an alternative, not just a no.",
-        notes: 'Balance: strong enough to show a spine, humble enough to show disagree-and-commit. Always bring an alternative, not just an objection.',
+          "[VERIFY — adapt to your real instance] The clearest one: during the project budgets migration, there was pressure to turn on the new reporting source-of-truth for all existing users on a fixed date to hit a quarterly goal. My manager wanted the clean cutover. I disagreed — because I'd traced the impact and knew there were something like 1,400 memorized reports across existing users that pulled cost from the old source, and a hard cutover risked those going silently blank on people who ran their business on them. I didn't just say 'this is risky.' I came with the specific failure — 'here's the exact report type that breaks and roughly how many users hit it' — and, importantly, an alternative: a dual-mode rollout where new-source and old-source users coexist behind a flag, so we could ramp by cohort and cut over only when mismatch monitoring was clean. That reframed it from 'ship date versus caution' to 'here's a path that hits the goal without the blast radius.' He agreed and we went dual-mode. Honestly, if he'd heard me out and still chosen the hard cutover, I'd have committed fully and just made the rollback airtight — making your case and then committing is the job. But you earn that pushback being taken seriously by bringing the specific number and the alternative, not just the worry.",
+        notes: 'The "1,400 memorized reports" specific is grounded in your real project budgets work — that concrete number is what makes it land. Structure: specific failure + a number + an alternative + disagree-and-commit if overruled.',
       },
       {
         q: 'Handling difficult colleague',
-        principle: 'Show maturity and de-escalation. Focus on the work, separate the person from the friction. Never vent.',
+        principle: 'Maturity and de-escalation. Find the legitimate concern under the difficult delivery. Never vent, never make it sound like you have enemies.',
         answer:
-          "[VERIFY — anchor if real] I try to assume good intent and keep everything anchored to the work rather than the friction. In one case, a colleague was consistently combative in reviews — sharp comments, pushing back hard on approach. Rather than match the tone or take it personally, I took it offline: I asked to talk through their concerns directly, and it turned out a lot of the sharpness was them caring about a part of the system they felt protective of. Once I understood that, I started looping them in earlier on decisions that touched their area, so they felt consulted rather than presented-with. The friction dropped a lot. My approach is to look for the legitimate concern underneath the difficult delivery, and address that.",
-        notes: 'Never make it sound like you have enemies. Look for the legitimate concern under the difficult delivery is the mature framing.',
+          "[VERIFY — adapt if real] On the consolidated email work, I had to integrate with a senior engineer who owned the shared email components, and he was blocking my PRs hard — long lists of change requests, pushing back on almost every approach, and it was slowing me down enough to threaten the timeline. My first instinct was frustration, but I made myself assume there was a real reason rather than that he was being territorial. So I stopped fighting it async in PR comments and asked for 20 minutes face to face. It turned out those shared components were used by several other teams he was responsible for, and he'd been burned before by someone forking them and causing regressions elsewhere — his 'difficulty' was really unmanaged risk. Once I understood that, everything changed: I proposed making the components mode-aware through props instead of forking them, which protected his other consumers, and I started looping him in on the design before writing code rather than presenting him with a finished PR. The review friction basically vanished, and he became one of my most useful reviewers. The lesson I keep: difficult behavior is usually a legitimate concern delivered badly — address the concern and the behavior tends to dissolve.",
+        notes: 'Grounded in your real consolidated-email refactor (mode-aware props, shared components). The reveal — "his difficulty was really unmanaged risk from other teams" — is what makes it mature rather than a complaint.',
       },
     ],
   },
@@ -2923,31 +2999,107 @@ const HR_QUESTIONS = [
     questions: [
       {
         q: 'Choosing best solution',
-        principle: 'Show a structured evaluation: options, criteria, tradeoff, decision. The replay data-validation choice is perfect.',
-        answer:
-          "Best example is how I validate data parity in the replay framework. The naive option — diffing whole database tables between the two systems — is correct but completely infeasible at terabyte scale, and mostly meaningless because 99.99% of rows have nothing to do with the request being validated. I needed to compare exactly the rows one request touched. The insight was that a relational schema is really a graph — rows are nodes, foreign keys are edges — so the rows a single write touches form a small connected subgraph hanging off one parent record. I traverse that with a breadth-first search from the request's parent record, bounded by a time window, which gives me exactly the impacted rows in a cost proportional to what the request touched — tens of rows, not the whole table. I chose it because it was the only option that was both correct and feasible at scale. The criteria were: correctness, cost at 32TB, and semantic meaningfulness — and the graph traversal was the only one that satisfied all three.",
-        notes: 'Your strongest structured-problem-solving story. The schema-is-a-graph insight is the impressive part — land it clearly.',
+        options: [
+          {
+            label: 'Traffic Replay (BFS)',
+            principle: 'Show structured evaluation: options, criteria, tradeoff, decision. The data-validation choice is perfect.',
+            answer:
+              "Best example is how I validate data parity in the replay framework. The naive option — diffing whole database tables between the two systems — is correct but completely infeasible at terabyte scale, and mostly meaningless because 99.99% of rows have nothing to do with the request being validated. I needed to compare exactly the rows one request touched. The insight was that a relational schema is really a graph — rows are nodes, foreign keys are edges — so the rows a single write touches form a small connected subgraph hanging off one parent record. I traverse that with a breadth-first search from the request's parent record, bounded by a time window, giving me exactly the impacted rows at a cost proportional to what the request touched — tens of rows, not the whole table. I chose it because it was the only option both correct and feasible at scale. The criteria were correctness, cost at 32TB, and semantic meaningfulness — and the graph traversal was the only one satisfying all three.",
+            notes: 'The schema-is-a-graph insight is the impressive part — land it clearly.',
+          },
+          {
+            label: 'CMS (reconcile vs rollback)',
+            principle: 'Use for a solution-choice under correctness pressure in a distributed system.',
+            answer:
+              "On the CMS resiliency work, the key solution choice was how to handle a write that times out mid-operation. The obvious option was: on timeout, roll back — undo what you did and report failure. But I realized that's actively wrong, because a timeout doesn't mean the write failed; it means the outcome is unknown — it may have succeeded and just lost the response. If you blindly roll back a call that actually succeeded, you create the opposite inconsistency. So I evaluated three options: assume-failure-and-rollback (creates drift), assume-success-and-continue (also creates drift the other way), or reconcile-then-decide. I chose reconcile: read the downstream's actual state first, then roll forward if it succeeded or compensate if it didn't. The criteria were correctness under every possible true outcome and no manufactured inconsistencies — and only reconciliation satisfied both. The best solution was the one that refused to guess.",
+            notes: 'The reconcile-before-compensate reasoning as a structured 3-option evaluation. Very strong for "choosing best solution."',
+          },
+          {
+            label: 'Consolidated Email (toggle vs force)',
+            principle: 'Use for a product-correctness solution choice with backward-compatibility stakes.',
+            answer:
+              "On consolidated email, the solution choice was how to change a load-bearing notification behavior without breaking the people who relied on the old one. The tempting option was to just switch everyone to consolidated — cleaner, one code path. But existing users had built real processes around per-transaction emails, and a silent behavior change on notifications is trust-ending. So I evaluated: force-migrate everyone (breaks existing workflows), fork into two separate email pipelines (drifts and rots on the first divergent bug fix), or a single mode-aware code path with a per-workflow preference defaulting to the old behavior. I chose the third — one set of shared components made mode-aware through props, opt-in to the new mode, percentage-gated rollout. The criteria were zero breakage for existing users and maintainability over time, and only the mode-aware single-path option satisfied both. The best solution protected trust and avoided a maintenance fork at the same time.",
+            notes: 'Three-option evaluation grounded in the real refactor-vs-fork decision. The "silent behavior change is trust-ending" framing is the signal.',
+          },
+        ],
       },
       {
         q: 'Production outage handling',
-        principle: 'Calm, structured: detect → mitigate → root-cause → prevent. Show you stop the bleeding before finding the cause.',
-        answer:
-          "[VERIFY — anchor to a real incident, or frame honestly] My instinct on any production issue is mitigate first, diagnose second — stop customer impact before satisfying curiosity about the cause. On the resiliency work for our cross-service sync, the whole design was built around exactly this kind of failure: when a call to the customer-management service times out mid-operation, you're in an unknown state — the write may have succeeded or failed. The wrong move is to guess. So the pattern I built was: detect the failure within a bounded timeout, treat the outcome as unknown, then reconcile by reading the actual downstream state before taking any corrective action — because blindly rolling back a call that actually succeeded creates the opposite inconsistency. That reconcile-before-you-act discipline is exactly how I approach outages: contain, find ground truth, then act on facts, not assumptions.",
-        notes: 'If you have a real outage you personally handled, use it. Otherwise this honestly frames your resiliency work as your outage philosophy. Mitigate before diagnose is the key phrase.',
+        options: [
+          {
+            label: 'CMS resiliency',
+            principle: 'Calm, structured: detect → mitigate → root-cause → prevent. Stop the bleeding before finding the cause.',
+            answer:
+              "[VERIFY — anchor to a real incident if you have one] My instinct on any production issue is mitigate first, diagnose second — stop customer impact before satisfying curiosity about the cause. On the resiliency work for our cross-service sync, the whole design was built around exactly this kind of failure: when a call to the customer-management service times out mid-operation, you're in an unknown state — the write may have succeeded or failed. The wrong move is to guess. So the pattern I built was: detect the failure within a bounded timeout, treat the outcome as unknown, then reconcile by reading the actual downstream state before taking any corrective action — because blindly rolling back a call that actually succeeded creates the opposite inconsistency. That reconcile-before-you-act discipline is exactly how I approach outages: contain, find ground truth, then act on facts, not assumptions.",
+            notes: 'If you have a real outage you personally handled, use it. This frames your resiliency work as your outage philosophy. "Mitigate before diagnose" is the key phrase.',
+          },
+          {
+            label: 'Replay as prevention',
+            principle: 'Use to reframe: the best outage handling is the outage that never ships. Shows preventive maturity.',
+            answer:
+              "My honest answer is that I've invested more in preventing outages than in heroics during them — because for the class of change I worked on, an outage on financial data is something you cannot fully clean up after. That's the entire reason I built the replay framework: the risky backend migrations we were doing were exactly the kind that cause a slow, ugly production incident — data subtly wrong in ways you don't notice until customers do. So rather than get good at firefighting those, I made them not happen: validate the change against real production traffic, catch the regression as a diff in a report before release, and ship with evidence instead of hope. When something does slip through in general, the discipline is the same as everyone's — mitigate first, then root-cause — but the higher-leverage move I care about is catching the failure before it's ever in front of a customer. The best incident response is the incident that never shipped.",
+            notes: 'Reframes toward prevention — a legitimate senior stance. Good if you genuinely lack a big personal outage story; don\'t invent one.',
+          },
+          {
+            label: 'Budget import (async failure)',
+            principle: 'Use for a graceful-degradation angle on handling failures in a live feature.',
+            answer:
+              "[VERIFY — adapt to real behavior] On the AI budget import, a relevant failure mode was the AI extraction service being slow or failing outright — which, if handled naively, would hang or break the user's flow in a live feature. The design principle I care about there is graceful degradation: the document goes through an explicit status state machine, server-authoritative, so a failure lands in a clean EXTRACTION_FAILED state rather than an ambiguous hang, and the user can retry or fall back to manual entry instead of being stuck. And because the status lives on the server, it survives the user closing their browser — the failure is recoverable, not silent. Handling failures in a live feature, to me, is about making sure every failure mode has a defined, recoverable state the user can see and act on — never an ambiguous hang and never silent data loss.",
+            notes: 'Graceful-degradation angle. Verify the actual state-machine behavior before claiming detail. Good variety from the CMS story.',
+          },
+        ],
       },
       {
         q: 'Made decision with incomplete information',
-        principle: 'Show you can act under uncertainty with a reversible bet + a way to learn. Not reckless, not paralyzed.',
-        answer:
-          "The entire timeout-handling design in the resiliency project is a decision under incomplete information — that's literally the problem. When a cross-service call times out, you fundamentally cannot know whether it succeeded; the information is unavailable by nature. The wrong response is to freeze or to guess. What I did was design the system to make the missing information discoverable: every call carries a correlation ID, so after a timeout I can go read the actual state and turn 'unknown' into 'known' before acting. Where I couldn't fully resolve it, I made the corrective action safe under either outcome — idempotent retries that do no harm if the original actually succeeded. That's my general approach to incomplete information: prefer decisions that are either reversible or that create a path to the missing facts, rather than betting big on a guess.",
-        notes: 'Reframes the CMS reconciliation work as decision-under-uncertainty — natural fit. Reversible bet or a path to the missing facts is the principle.',
+        options: [
+          {
+            label: 'CMS timeout',
+            principle: 'Act under uncertainty with a reversible bet + a way to learn. Not reckless, not paralyzed.',
+            answer:
+              "The entire timeout-handling design in the resiliency project is a decision under incomplete information — that's literally the problem. When a cross-service call times out, you fundamentally cannot know whether it succeeded; the information is unavailable by nature. The wrong response is to freeze or to guess. What I did was design the system to make the missing information discoverable: every call carries a correlation ID, so after a timeout I can go read the actual state and turn 'unknown' into 'known' before acting. Where I couldn't fully resolve it, I made the corrective action safe under either outcome — idempotent retries that do no harm if the original actually succeeded. My general approach to incomplete information: prefer decisions that are either reversible or that create a path to the missing facts, rather than betting big on a guess.",
+            notes: 'Reframes the CMS reconciliation work as decision-under-uncertainty. "Reversible bet or a path to the missing facts" is the principle.',
+          },
+          {
+            label: 'Project Budgets (rollout)',
+            principle: 'Use for a product/rollout decision made without full data.',
+            answer:
+              "[VERIFY — adapt to real rollout data] On the project budgets migration, we had to decide how aggressively to roll out the new reporting source without complete information about how every user cohort actually depended on the old reports — we knew the rough shape, roughly 1,400 memorized reports affected, but not the full behavior of every cohort in production. Rather than wait for perfect information that would never come, or gamble on a full cutover, I chose the reversible path: dual-mode reporting and a cohort-by-cohort rollout with mismatch monitoring. That way each stage produced the very information we were missing — real production signal on whether cohorts broke — before we widened. The decision was structured so that acting was also how we learned, and every step was reversible if the signal was bad. Under incomplete information, I'd rather make a small reversible move that generates the missing data than wait for certainty that isn't coming.",
+            notes: 'Staged, reversible rollout as decision-under-uncertainty. Verify the specifics. "Acting was also how we learned" is the signal.',
+          },
+          {
+            label: 'Replay data scoping',
+            principle: 'Use for a design decision made under uncertainty about data shape/scale.',
+            answer:
+              "A more technical version: when I designed the data-parity validation for the replay framework, I didn't have complete information about exactly which tables and rows each workflow would touch — the schema was large and the access patterns varied by request. I couldn't enumerate it all up front. So instead of trying to, I designed for the uncertainty: a bounded breadth-first traversal from the request's parent record, following foreign keys outward, with the scope constrained by a time window and per-workflow configuration. It discovers the impacted rows dynamically rather than requiring me to know them in advance, and the bounds keep it safe even when a workflow touches more than I expected. Designing under incomplete information often means building something that discovers what it needs at runtime, with guardrails, instead of demanding complete knowledge before you start.",
+            notes: 'Design-for-discovery under uncertainty. Ties to the real BFS scoping. Good technical variety from the two consistency-flavored answers.',
+          },
+        ],
       },
       {
         q: 'Automating repetitive tasks',
-        principle: 'The whole traffic replay framework IS this answer — it automated away thousands of hours of manual regression testing.',
-        answer:
-          "The traffic replay framework is fundamentally an automation story. Before it, validating a risky backend change meant huge amounts of manual regression testing — engineers hand-crafting test cases that could never cover the real shape of production traffic, and still leaving blind spots. I automated the whole validation loop: capture real production traffic, replay it against the changed system, and automatically compare responses, data, and latency — surfacing regressions as a report instead of as a customer incident. It saved on the order of a thousand-plus hours of manual regression work across initiatives [VERIFY exact figure], but the bigger win was qualitative — it turned 'test what we thought of and hope' into 'validated against real traffic before release.' I look for exactly these leverage points: repetitive, error-prone manual work that, if automated well, changes not just the effort but the confidence level of the whole team.",
-        notes: 'Verify the 1000+ hours figure against your resume. The qualitative reframe (changed the confidence level, not just the effort) is the senior touch.',
+        options: [
+          {
+            label: 'Traffic Replay',
+            principle: 'The whole framework IS this — it automated away thousands of hours of manual regression testing.',
+            answer:
+              "The traffic replay framework is fundamentally an automation story. Before it, validating a risky backend change meant huge amounts of manual regression testing — engineers hand-crafting test cases that could never cover the real shape of production traffic, and still leaving blind spots. I automated the whole validation loop: capture real production traffic, replay it against the changed system, and automatically compare responses, data, and latency — surfacing regressions as a report instead of a customer incident. It saved on the order of a thousand-plus hours of manual regression work across initiatives [VERIFY exact figure], but the bigger win was qualitative — it turned 'test what we thought of and hope' into 'validated against real traffic before release.' I look for exactly these leverage points: repetitive, error-prone manual work that, automated well, changes not just the effort but the confidence level of the whole team.",
+            notes: 'The qualitative reframe (changed the confidence level, not just effort) is the senior touch. Verify the hours figure.',
+          },
+          {
+            label: 'AI Budget Import',
+            principle: 'Use for an automation story with an AI/human-in-the-loop angle.',
+            answer:
+              "The AI-assisted budget import is an automation story with a twist. Creating a project budget from scratch was around 30 minutes of manual data entry, and most users rebuilt very similar budgets over and over. I worked on automating that: upload a spreadsheet, an AI service extracts the line items and matches them against the company's existing products and services, and the user just reviews. But the interesting part is what I deliberately did *not* fully automate — because the output lands in financial records, and AI extraction is probabilistic. So instead of auto-committing everything, the system classifies each match by confidence and only asks the human to review the uncertain rows. It automated the 30-minute grind down to an upload-plus-review while keeping a human gate exactly where wrong data would be expensive. That's my philosophy on automation: automate the repetitive bulk, but keep a human checkpoint wherever an automated mistake is costly and silent.",
+            notes: 'The "automate the bulk, keep a human gate where mistakes are costly" framing is mature. Verify your actual slice on AI import.',
+          },
+          {
+            label: 'Consolidated Email (mocks)',
+            principle: 'Use for a smaller, dev-workflow automation angle if the others are used.',
+            answer:
+              "A smaller but real example is from the consolidated email work. The backend APIs I depended on weren't ready, which would normally mean repeatedly blocking, waiting, and hand-testing against a moving target. Instead I built a mock layer matching the agreed API contract, which let me develop and test the entire frontend automatically against stable, predictable responses — no manual coordination cycle every time I needed to check a case. It removed the repetitive block-and-wait loop and kept the release on schedule, and when the real backend landed, integration was clean because both sides had built to the same contract. Automating away a repetitive coordination bottleneck can be as valuable as automating a data task — it's about removing the friction that slows the whole team down.",
+            notes: 'Reframes mocks as automating-away-a-bottleneck. Good lighter-weight option grounded in real consolidated-email work.',
+          },
+        ],
       },
     ],
   },
@@ -2956,10 +3108,29 @@ const HR_QUESTIONS = [
     questions: [
       {
         q: 'Quickly learning a new technology',
-        principle: 'Show a learning method, not just "I learned X." How you ramp is the transferable signal.',
-        answer:
-          "The replay framework forced me to ramp fast on a stack I hadn't used deeply — GoReplay for capture, Envoy and Wiremock for downstream mocking, Kafka for the transport, all at once. My method is to learn from the constraint inward rather than reading docs end to end: I started from what the system had to guarantee — capture HTTP-level traffic without touching the app, mock writes with zero blast radius, pair requests with responses reliably — and then learned exactly the part of each tool that served that guarantee. For Kafka, that meant going deep on partitioning and ordering because request-response pairing depended on it, and staying shallow on the rest until I needed it. Learning against a concrete requirement makes it stick, and it stops you drowning in a tool's full surface area. Within a few weeks I understood these well enough to make real architectural decisions with them.",
-        notes: 'Learn from the constraint inward is a genuinely good, memorable framing of a learning method. That method IS the answer.',
+        options: [
+          {
+            label: 'Traffic Replay',
+            principle: 'Show a learning METHOD, not just "I learned X." How you ramp is the transferable signal.',
+            answer:
+              "The replay framework forced me to ramp fast on a stack I hadn't used deeply — GoReplay for capture, Envoy and Wiremock for downstream mocking, Kafka for transport, all at once. My method is to learn from the constraint inward rather than reading docs end to end: I started from what the system had to guarantee — capture HTTP-level traffic without touching the app, mock writes with zero blast radius, pair requests with responses reliably — and learned exactly the part of each tool that served that guarantee. For Kafka, that meant going deep on partitioning and ordering because request-response pairing depended on it, and staying shallow on the rest until I needed it. Learning against a concrete requirement makes it stick and stops you drowning in a tool's full surface area. Within a few weeks I understood these well enough to make real architectural decisions with them.",
+            notes: '"Learn from the constraint inward" is a genuinely good, memorable learning method. That method IS the answer.',
+          },
+          {
+            label: 'AI / QBAI',
+            principle: 'Use when you want to show you can ramp on an unfamiliar DOMAIN (AI/ML), not just a tool.',
+            answer:
+              "The AI budget import made me ramp fast on a whole domain I hadn't worked in — how AI extraction and semantic matching actually work. I couldn't design the review experience well without understanding why the AI behaved the way it did. My method was the same as always: learn from the concrete problem inward. I didn't try to learn machine learning broadly; I learned exactly what the seam demanded — why extraction is probabilistic, why matching uses embeddings and similarity scores rather than string equality, why confidence thresholds map to the review tiers, and why the latency profile forces an async pattern. I went deep on precisely those, because those were the concepts my design decisions actually rested on. That focused ramp let me reason about an AI system and design around its failure modes within the project timeline, despite starting from a backend background.",
+            notes: 'Shows domain-ramp, not just tool-ramp. Same "learn from the concrete problem inward" method. Verify your AI-import slice.',
+          },
+          {
+            label: 'DB Migration internals',
+            principle: 'Use for a fundamentals-depth version — learning the guts of a database engine.',
+            answer:
+              "For the database migration validation, I had to get deep, fast, on the internals of two different database engines — because the bugs in a migration live precisely in the subtle differences between them. I couldn't validate parity without understanding where the engines diverge. So I learned from the failure modes inward: I went deep specifically on the things that silently differ — isolation-level semantics, collation and sort-order behavior, sequence and auto-increment handling, type coercion edge cases — because those are exactly where a migrated query returns different results without erroring. I skipped the parts that didn't affect correctness. Learning targeted at 'where will this silently break' rather than 'read the whole manual' let me build validation that caught real divergences fast. My general rule: when learning something new under time pressure, learn toward the failure modes, not front-to-back.",
+            notes: 'Fundamentals-depth version. "Learn toward the failure modes" is the memorable method. Verify which engines/specifics before claiming detail.',
+          },
+        ],
       },
       {
         q: 'Worked outside your comfort zone',
@@ -2991,8 +3162,8 @@ const HR_QUESTIONS = [
         q: 'Time when you missed a deadline',
         principle: 'Own it without excuses, show what you learned and changed. Never blame others. The lesson is the point.',
         answer:
-          "[VERIFY — anchor to a real slip] On one project, a piece I owned slipped past the date I'd committed to. The honest root cause was that I'd underestimated the integration complexity — specifically the edge cases in how the change interacted with existing behavior — and I hadn't surfaced the risk early enough, so by the time it was clearly going to be late, there wasn't much runway to adjust. I owned it directly with my lead rather than letting it drift, we re-scoped to ship the safe core on time and fast-follow the rest, and it landed without customer impact. The real lesson wasn't about working faster — it was about surfacing risk earlier. Now I flag 'this might slip and here's why' the moment I smell it, not when it's certain, because early visibility gives everyone options that a late surprise doesn't.",
-        notes: 'The lesson — surface risk early, not when it is certain — is what they are grading. Own the miss cleanly, no blame, show the behavior change.',
+          "[VERIFY — adapt to your real slip] On the AI budget import, I committed to a date for the async document-processing flow and slipped it by about two weeks. The honest root cause: I estimated it as 'wire the upload to the extraction service and poll for status' — but the real complexity was in the states I hadn't planned for. What happens if the user closes the browser mid-extraction? If extraction fails halfway? If they cancel and re-upload? Each of those forced changes to the status model, and I discovered them one at a time during development instead of upfront — so my estimate was for the happy path and the work was mostly in the unhappy paths. The second mistake was that I didn't surface the risk until the slip was certain, which left my lead with no room to adjust. What we did: I owned it directly, we re-scoped to ship the synchronous version behind a flag on the original date — real user value, simpler flow — and fast-followed with the async version. Two lessons that actually changed how I work: I now estimate the failure paths explicitly, because in anything involving external services the unhappy paths ARE the work; and I flag 'this might slip and here's why' the moment I smell it, not when it's certain — early visibility gives everyone options a late surprise doesn't.",
+        notes: "Grounded in your real V1-sync/V2-async generational rollout — the shipped-sync-first detail is true to the architecture, which makes the story credible. The two named lessons are what they are grading.",
       },
     ],
   },
@@ -3001,17 +3172,55 @@ const HR_QUESTIONS = [
     questions: [
       {
         q: 'Leading without asking',
-        principle: 'The traffic replay framework started as YOUR initiative to fill a gap nobody assigned. That IS this answer.',
-        answer:
-          "The replay framework is exactly this. Nobody assigned it — I saw the gap. We had high-risk migrations coming and no reliable way to validate them against real customer traffic, and I was uncomfortable with the level of blind risk we were carrying. Rather than wait for someone to solve it, I scoped the idea, prototyped enough to prove it was feasible, and brought a concrete proposal to my lead instead of just raising a concern. Then I drove it across the teams whose buy-in I needed. The initiative wasn't just building it — it was recognizing that the risk was real before it turned into an incident, and taking ownership of a problem that technically wasn't anyone's assigned job. It ended up being used across multiple migrations. I've learned that the highest-leverage work is often the thing you notice is missing and decide to own.",
-        notes: 'Your single best initiative story. Emphasize: saw the gap, prototyped proof, brought a proposal not a complaint. That sequence is the senior signal.',
+        options: [
+          {
+            label: 'Traffic Replay',
+            principle: 'The framework started as YOUR initiative to fill a gap nobody assigned. That IS this answer.',
+            answer:
+              "The replay framework is exactly this. Nobody assigned it — I saw the gap. We had high-risk migrations coming and no reliable way to validate them against real customer traffic, and I was uncomfortable with the blind risk we were carrying. Rather than wait for someone to solve it, I scoped the idea, prototyped enough to prove it was feasible, and brought a concrete proposal to my lead instead of just raising a concern. Then I drove it across the teams whose buy-in I needed. The initiative wasn't just building it — it was recognizing the risk was real before it turned into an incident, and owning a problem that technically wasn't anyone's assigned job. It ended up used across multiple migrations. The highest-leverage work is often the thing you notice is missing and decide to own.",
+            notes: 'Your best initiative story. Emphasize: saw the gap, prototyped proof, brought a proposal not a complaint.',
+          },
+          {
+            label: 'Budget Versioning',
+            principle: 'Use for a smaller, more contained initiative — spotting a correctness gap and closing it.',
+            answer:
+              "[VERIFY — confirm this was your initiative] On project budgets, I pushed for proper versioning before anyone asked for it. The feature shipped with budgets being editable in place, and I was uncomfortable with that, because a published budget is a financial record that people act on — if someone edits it later, the version that was approved is just gone, and there's no audit trail. Nobody had flagged this as a problem yet. Rather than wait for it to become an incident, I made the case for copy-on-write versioning: editing a published budget should fork an immutable new revision and keep the old one as history. I laid out the risk concretely and proposed the design. Taking initiative here meant seeing a latent correctness gap — the kind that doesn't hurt until it suddenly does in an audit — and owning it before it bit us.",
+            notes: 'Verify this was genuinely your initiative vs assigned. Frame around spotting a latent audit/correctness gap. Grounds in the real versioning work.',
+          },
+          {
+            label: 'Conceptual foundations prep',
+            principle: 'Use ONLY if a lighter, learning-culture example fits — e.g. improving team knowledge or docs unprompted.',
+            answer:
+              "[VERIFY — use a real instance] A lighter example: on the replay framework, I noticed that the reasoning behind key design decisions — why the Nginx sandwich, why the partition key, why mock at the network layer — lived only in my head, which meant the framework was hard for other teams to onboard onto or extend safely. Nobody asked me to fix that. But I could see it would become a bottleneck as more teams adopted it. So I took the initiative to document the design decisions as first-principles reasoning — not just what the system does, but why each choice was the only safe option — so another engineer could extend it without re-deriving everything or introducing a subtle blast-radius bug. Initiative isn't always a big new system; sometimes it's noticing that critical knowledge is trapped and deciding to free it before it costs the team.",
+            notes: 'Softer initiative example about knowledge-sharing. Verify against a real instance; adapt to actual docs/mentoring you did.',
+          },
+        ],
       },
       {
         q: 'Going above and beyond',
-        principle: 'Show discretionary effort that created outsized impact. The reusability of the replay framework fits — you built a platform, not a one-off.',
-        answer:
-          "When I built the replay framework, the minimum ask was to validate one specific migration. I could have built a narrow, throwaway tool for exactly that one job. Instead I built it as a general-purpose platform — protocol-agnostic capture, a reusable comparison engine, configuration-driven onboarding — because I could see the same validation gap would exist for the next risky change, and the one after that. That was more work up front for a problem nobody was asking me to solve yet. But it meant the framework went on to back multiple initiatives — a database migration, a Hibernate upgrade, and others — and became the way the org de-risks this class of change. Going above and beyond, to me, isn't heroics or hours; it's solving the general problem when you were only asked to solve the specific one, when you can see the leverage.",
-        notes: 'Solve the general problem when asked for the specific one is a crisp, senior definition of above-and-beyond. Much stronger than I worked weekends.',
+        options: [
+          {
+            label: 'Traffic Replay',
+            principle: 'Discretionary effort that created outsized impact. You built a platform, not a one-off.',
+            answer:
+              "When I built the replay framework, the minimum ask was to validate one specific migration. I could have built a narrow, throwaway tool for exactly that one job. Instead I built it as a general-purpose platform — protocol-agnostic capture, a reusable comparison engine, configuration-driven onboarding — because I could see the same validation gap would exist for the next risky change, and the one after that. That was more work up front for a problem nobody was asking me to solve yet. But it meant the framework went on to back multiple initiatives — a database migration, a Hibernate upgrade, and others — and became the way the org de-risks this class of change. Going above and beyond, to me, isn't heroics or hours; it's solving the general problem when you were only asked to solve the specific one, when you can see the leverage.",
+            notes: '"Solve the general problem when asked for the specific one" is a crisp, senior definition. Much stronger than "I worked weekends."',
+          },
+          {
+            label: 'Project Budgets (downgrade path)',
+            principle: 'Use for above-and-beyond as anticipating an edge case others would have skipped.',
+            answer:
+              "[VERIFY — confirm you drove this] On project budgets, the above-and-beyond piece was the downgrade path. The core ask was to launch budgets for users on the higher tier. What nobody was really pushing on was what happens when a user *downgrades* — their budget data would be stranded or lost, which is a quiet, nasty way to break trust with a paying customer. It would have been easy to ship the launch and treat downgrade as a later problem. Instead I pushed to handle it up front: a reverse-migration that preserves the user's budget data even when they drop to a tier without the feature, so nothing is silently destroyed. It was extra work for an edge case most launches would have deferred — but on financial data, silently losing someone's work is exactly the kind of trust failure you can't undo. Going above and beyond here was refusing to leave a data-loss edge case for 'later.'",
+            notes: 'Verify you actually drove the downgrade/reverse-migration. The "refused to leave a data-loss edge for later" framing is strong and grounded.',
+          },
+          {
+            label: 'Consolidated Email (CSAT)',
+            principle: 'Use for a customer-empathy flavored above-and-beyond.',
+            answer:
+              "On consolidated email, the minimum ask was to add a consolidated option. But I went further on making sure it actually served users rather than just shipping the toggle. I dug into why the first version of the experience had underperformed — it had ignored user preference and had compliance gaps — and made the case for building it around real user choice, per-workflow preferences, and legal-reviewed content, rather than a quick forced rollout. That was more work than the minimum feature, but it's the difference between shipping something and shipping something people actually adopt. It moved notification-experience satisfaction up meaningfully [VERIFY ~40% CSAT]. Going above and beyond was caring whether the feature earned adoption, not just whether it shipped.",
+            notes: 'Customer-empathy angle. Verify the CSAT figure. The "caring whether it earned adoption, not just shipped" framing is the signal.',
+          },
+        ],
       },
     ],
   },
@@ -3020,10 +3229,10 @@ const HR_QUESTIONS = [
     questions: [
       {
         q: 'Receiving critical feedback',
-        principle: 'Show you take it non-defensively, act on it, and it made you better. Pick real, non-fatal feedback.',
+        principle: 'Show you take it non-defensively, act on it, and it made you better. Pick real, non-fatal feedback — a working-style gap, not a competence gap.',
         answer:
-          "[VERIFY — anchor to real feedback] A piece of feedback I got that stuck was that I sometimes went deep into building before I'd socialized the approach widely enough — so I'd have a strong solution, but stakeholders hadn't been brought along, and I'd have to backtrack to get alignment. My first instinct was mild defensiveness — the solution was good — but the feedback was fair: being right isn't the same as being aligned. So I changed how I sequence: now I socialize the approach and the tradeoffs early, in a lightweight way, before I've sunk real time into building. It actually makes the building faster because I hit fewer late-stage 'wait, why didn't you consider X' moments. I've come to value that kind of feedback specifically because it catches blind spots I can't see myself.",
-        notes: 'Pick feedback that is real but not disqualifying — a working-style thing, not a competence thing. Show the non-defensive turn and the concrete change.',
+          "[VERIFY — adapt to your real feedback] The feedback that changed how I work came from my manager early in the replay framework. I'd gone heads-down and built a working capture prototype before I'd properly socialized the approach — and when I finally presented it, the downstream teams raised concerns I hadn't accounted for, like how mocked responses would be kept in sync with their evolving API contracts. My manager's feedback was direct: the prototype was good, but I'd optimized for building speed over alignment, and now I was defending a design instead of shaping one with the people who had context I lacked. My first instinct was mild defensiveness — the prototype worked — but he was right: being right is not the same as being aligned, and I'd burned time building things I then had to rework. The change I made was concrete: for everything significant since, I write a one-pager with the approach and the tradeoffs and circulate it BEFORE I write real code — I did exactly that for the downstream-mocking design and the data-validation approach, and the feedback on those one-pagers caught issues in an afternoon that would have cost me weeks in code. I've come to actively want that kind of feedback, because it catches the blind spots I structurally cannot see myself.",
+        notes: "The one-pager-before-code change is the concrete behavioral proof. The mocked-contract-drift concern is a real issue in your architecture, which makes the story ring true. Verify against what actually happened.",
       },
       {
         q: 'Giving constructive feedback',
@@ -3043,8 +3252,8 @@ const HR_QUESTIONS = [
         q: 'Time when you failed',
         principle: 'A real failure, owned cleanly, with a genuine lesson. Not a humblebrag. The vulnerability + the growth is the point.',
         answer:
-          "[VERIFY — anchor to a real failure] Early on, I built a piece of a feature the way I thought was right without validating my assumptions about how users actually worked with it — and it turned out I'd optimized for a workflow that wasn't the common one. It shipped, got limited traction for the effort I'd put in, and I had to rework a meaningful part of it. The failure was real: I'd fallen in love with my solution before confirming the problem. What I took from it is that I now front-load validating the assumption, not just the implementation — I'll spend time up front confirming 'is this actually the problem, and is this actually how people hit it' before I commit to a design. It made me a better engineer specifically because it was a bit humbling — it broke the habit of assuming my model of the problem was correct.",
-        notes: 'Must be a REAL failure with a real cost — interviewers can smell a fake one. Fell in love with the solution before confirming the problem is relatable, non-fatal, with a genuine lesson.',
+          "[VERIFY — adapt to your real failure] A failure I own completely was on the consolidated email work. The feature let users choose consolidated versus individual emails per workflow, and in my first implementation I resolved that preference at the moment the user toggled the setting. It seemed obviously correct. What I hadn't thought through: emails that were already queued or scheduled when the toggle flipped. In testing before wide rollout we found in-flight emails behaving inconsistently — some went out in the old mode, some in the new, depending on where they were in the pipeline when the setting changed. The failure was not the bug itself; it was that I had never asked the question 'WHEN should this preference be read?' I'd assumed the answer instead of noticing there was a decision there at all. The fix was to resolve the preference at execution time — the moment an email is actually sent — which makes behavior deterministic no matter when the user toggles. I had to rework a chunk of the delivery path, and it cost us schedule. The durable lesson: for any setting or piece of state, the question 'at what moment is this read, and what is in flight when it changes' is now something I ask at design time, every time. Getting that wrong once, cheaply, in testing — rather than in production — made me permanently better at designing state transitions.",
+        notes: "Grounded in a REAL design detail of your project — the preference genuinely resolves at execution time, so this failure story explains WHY that design exists. That coherence is what makes it credible. Verify whether this matches what actually happened, and adjust.",
       },
     ],
   },
@@ -3053,17 +3262,55 @@ const HR_QUESTIONS = [
     questions: [
       {
         q: 'Explaining to non-technical',
-        principle: 'Show you can translate via analogy and audience-framing. Pick a genuinely technical thing you simplified.',
-        answer:
-          "I had to explain the replay framework to non-technical stakeholders to justify funding a parallel production stack. The technical version — sidecars, traffic mirroring, downstream mocking — means nothing to them. So I used an analogy: it's like a flight simulator for our production system. We take the real conditions pilots actually face — real customer traffic — and let a new version of the plane fly through them in a simulator, where a crash hurts no one, before we ever put real passengers on it. Then I connected it to what they cared about: this is how we make risky changes without betting the customer experience on them. The principle I use is to lead with what the listener cares about — for them it was risk and customer trust, not architecture — and reach for an analogy from a world they already understand. Framing for the audience is most of the work.",
-        notes: 'The flight-simulator analogy is genuinely good and reusable. Principle: lead with what THEY care about, borrow an analogy from their world.',
+        options: [
+          {
+            label: 'Traffic Replay',
+            principle: 'Translate via analogy and audience-framing. Pick a genuinely technical thing you simplified.',
+            answer:
+              "I had to explain the replay framework to non-technical stakeholders to justify funding a parallel production stack. The technical version — sidecars, traffic mirroring, downstream mocking — means nothing to them. So I used an analogy: it's like a flight simulator for our production system. We take the real conditions pilots actually face — real customer traffic — and let a new version of the plane fly through them in a simulator, where a crash hurts no one, before we ever put real passengers on it. Then I connected it to what they cared about: this is how we make risky changes without betting the customer experience on them. My principle is to lead with what the listener cares about — for them it was risk and customer trust, not architecture — and reach for an analogy from a world they already understand.",
+            notes: 'The flight-simulator analogy is genuinely good and reusable. Lead with what THEY care about, borrow an analogy from their world.',
+          },
+          {
+            label: 'CMS timeout',
+            principle: 'Use for explaining a subtle distributed-systems idea to a non-technical audience.',
+            answer:
+              "I had to explain the CMS timeout problem to non-technical stakeholders to justify the resiliency investment, and 'distributed transaction reconciliation' means nothing to them. So I used an everyday analogy: imagine you send an important letter and never hear back. You don't actually know if it arrived and the reply got lost, or if it never arrived at all — and the wrong move is to assume one or the other and act on the guess. If you assume it failed and re-send, but it actually arrived, now there are two letters causing confusion. What we built is a way to 'call and check what actually happened' before doing anything, so we never act on a guess. Then I tied it to their concern: this is why customer data stays consistent instead of quietly going wrong. The principle is the same — borrow a situation from their life, and connect it to the outcome they care about.",
+            notes: 'The lost-letter analogy makes the Two Generals problem intuitive. Same principle: everyday analogy + their outcome.',
+          },
+          {
+            label: 'Project Budgets',
+            principle: 'Use for explaining a product/data concept to a business stakeholder.',
+            answer:
+              "On project budgets I often had to explain to non-technical stakeholders why we were 'splitting one thing into two' — separating the cost budget from the customer estimate — which sounds like extra complexity to a business audience. So I framed it in their world: I said it's like the difference between the price you quote a customer and your own internal spreadsheet of what the job will actually cost you to deliver. You'd never hand your customer your cost breakdown, and you'd never run your business off the customer-facing quote — they're two different documents for two different purposes, and jamming them into one form is exactly why people were leaving to use spreadsheets. Once it was 'the quote versus your own cost sheet,' the reason for the split was obvious to them. Lead with a distinction they already live with, not the system design.",
+            notes: 'The "customer quote vs your own cost sheet" framing makes the PB/PE split instantly intuitive to a business audience.',
+          },
+        ],
       },
       {
         q: 'Presenting to leadership',
-        principle: 'Show you lead with the decision/ask and the impact, not the technical journey. Executives want the "so what" first.',
-        answer:
-          "When I've presented to leadership — for instance to get buy-in and resourcing for the replay framework — I've learned to invert how engineers naturally talk. My instinct is to build up from the technical detail to the conclusion; leadership needs the opposite. So I lead with the decision and the stakes: 'we're carrying real risk on these migrations, here's a way to eliminate it, here's what it costs and what it saves,' and I put the number and the ask in the first thirty seconds. Then I go one level down into how it works, and I keep the deep technical detail in reserve for questions rather than in the main line. I also frame everything in their terms — risk reduction, customer-facing incidents avoided, engineering hours saved — not in terms of the architecture I find interesting. Conclusion first, tailored to what they're deciding, detail on demand. That shift made my asks land much better.",
-        notes: 'Conclusion first, detail on demand is the executive-communication principle. The contrast with engineer-instinct (build up vs. lead with so-what) shows self-awareness.',
+        options: [
+          {
+            label: 'Traffic Replay',
+            principle: 'Lead with the decision/ask and impact, not the technical journey. Executives want the "so what" first.',
+            answer:
+              "When I've presented to leadership — for instance to get buy-in and resourcing for the replay framework — I've learned to invert how engineers naturally talk. My instinct is to build up from technical detail to the conclusion; leadership needs the opposite. So I lead with the decision and the stakes: 'we're carrying real risk on these migrations, here's a way to eliminate it, here's what it costs and what it saves,' and I put the number and the ask in the first thirty seconds. Then I go one level down into how it works, and I keep the deep technical detail in reserve for questions rather than the main line. I frame everything in their terms — risk reduction, incidents avoided, engineering hours saved — not the architecture I find interesting. Conclusion first, tailored to what they're deciding, detail on demand.",
+            notes: '"Conclusion first, detail on demand" is the executive-communication principle. The engineer-instinct contrast shows self-awareness.',
+          },
+          {
+            label: 'Project Budgets (risk)',
+            principle: 'Use for presenting a risk/migration decision to leadership.',
+            answer:
+              "On project budgets I had to present the migration risk to leadership who were focused on the launch date. Same principle — lead with what they're deciding, not the technical detail. I opened with the decision and the stakes in plain terms: 'we can hit the date with a hard cutover, but here's the specific risk — roughly 1,400 existing reports could break for paying customers — and here's an alternative that hits the date without that risk.' I put the number and the recommendation first, then went one level into the dual-mode rollout mechanism, and kept the deeper migration detail for questions. Framing it as a business risk decision with a clear recommendation — rather than a technical explanation — got a fast, aligned decision. Leadership wants the tradeoff and your recommendation up front, not the architecture.",
+            notes: 'Same conclusion-first principle applied to a risk decision. The "1,400 reports" specific gives it weight.',
+          },
+          {
+            label: 'CMS (outcome)',
+            principle: 'Use for presenting a completed technical win in business terms.',
+            answer:
+              "When I presented the CMS resiliency outcome to leadership, the temptation was to walk them through the elegant timeout-reconciliation design — which they don't care about. So I led with the result in their terms: 'we cut sync failures by around 95%, which means far fewer cases of customer project data silently going inconsistent.' That's the so-what. Then I gave one level of how — 'the old system guessed on network timeouts and guessed wrong; the new one checks what actually happened before acting' — in a single sentence, and left the distributed-systems depth for anyone who asked. The discipline is translating a technical achievement into the business outcome it produced, and trusting that the depth is there if they want to pull on it.",
+            notes: 'Translating a technical win into a business outcome. "95% fewer silent inconsistencies" is the leadership-facing number.',
+          },
+        ],
       },
     ],
   },
@@ -3897,6 +4144,48 @@ const css = `
     padding: 2px 6px;
     flex-shrink: 0;
     opacity: 0.8;
+  }
+  .pf-hr-multi-badge {
+    font-family: var(--mono);
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: 3px;
+    padding: 2px 6px;
+    flex-shrink: 0;
+    opacity: 0.85;
+  }
+  .pf-hr-opt-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 4px;
+    padding-bottom: 14px;
+    border-bottom: 1px dashed var(--rule);
+  }
+  .pf-hr-opt-tab {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.03em;
+    padding: 6px 12px;
+    border: 1px solid var(--rule);
+    border-radius: 999px;
+    background: var(--paper);
+    color: var(--ink-mid);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .pf-hr-opt-tab:hover {
+    color: var(--ink);
+    border-color: var(--ink-faded);
+  }
+  .pf-hr-opt-tab.active {
+    background: var(--accent);
+    color: var(--paper);
+    border-color: var(--accent);
+    font-weight: 600;
   }
   .pf-hr-q-body {
     padding: 4px 20px 22px 48px;
@@ -5376,20 +5665,27 @@ const DeepDive = ({ projects, selectedId, onSelect }) => {
 const HRQuestions = () => {
   const [activeCategory, setActiveCategory] = useState(HR_QUESTIONS[0].category);
   const [openQ, setOpenQ] = useState({});
+  const [optionIdx, setOptionIdx] = useState({});
   const [query, setQuery] = useState('');
 
   const toggle = (key) => setOpenQ((s) => ({ ...s, [key]: !s[key] }));
+
+  const matches = (item, q) => {
+    if (item.q.toLowerCase().includes(q)) return true;
+    const opts = item.options || [{ answer: item.answer, principle: item.principle }];
+    return opts.some(
+      (o) =>
+        (o.answer || '').toLowerCase().includes(q) ||
+        (o.principle || '').toLowerCase().includes(q) ||
+        (o.label || '').toLowerCase().includes(q)
+    );
+  };
 
   const q = query.trim().toLowerCase();
   const categoriesToShow = q
     ? HR_QUESTIONS.map((c) => ({
         ...c,
-        questions: c.questions.filter(
-          (item) =>
-            item.q.toLowerCase().includes(q) ||
-            item.answer.toLowerCase().includes(q) ||
-            (item.principle || '').toLowerCase().includes(q)
-        ),
+        questions: c.questions.filter((item) => matches(item, q)),
       })).filter((c) => c.questions.length > 0)
     : HR_QUESTIONS;
 
@@ -5407,31 +5703,56 @@ const HRQuestions = () => {
     }
   };
 
+  const renderAnswerBody = (a) => (
+    <>
+      {a.principle && (
+        <div className="pf-hr-principle">
+          <span className="pf-hr-principle-label">Strategy</span>
+          {a.principle}
+        </div>
+      )}
+      <div className="pf-hr-answer">{a.answer}</div>
+      {a.notes && (
+        <div className="pf-hr-notes">
+          <span className="pf-hr-notes-label">Delivery notes</span>
+          {a.notes}
+        </div>
+      )}
+    </>
+  );
+
   const renderQuestion = (item, key) => {
     const isOpen = !!openQ[key];
-    const hasVerify = item.answer.includes('[VERIFY') || (item.notes || '').includes('VERIFY');
+    // options model: if item.options exists, it's a multi-project question; else single answer
+    const options = item.options || [{ label: item.project || 'Answer', principle: item.principle, answer: item.answer, notes: item.notes }];
+    const selectedIdx = optionIdx[key] || 0;
+    const current = options[selectedIdx] || options[0];
+    const anyVerify = options.some((o) => (o.answer || '').includes('[VERIFY]') || (o.notes || '').includes('VERIFY'));
+    const isMulti = options.length > 1;
     return (
       <div key={key} className={`pf-hr-q ${isOpen ? 'open' : ''}`}>
         <button className="pf-hr-q-head" onClick={() => toggle(key)}>
           <span className="pf-hr-q-chevron">{isOpen ? '−' : '+'}</span>
           <span className="pf-hr-q-title">{item.q}</span>
-          {hasVerify && <span className="pf-hr-verify-badge">verify</span>}
+          {isMulti && <span className="pf-hr-multi-badge">{options.length} options</span>}
+          {anyVerify && <span className="pf-hr-verify-badge">verify</span>}
         </button>
         {isOpen && (
           <div className="pf-hr-q-body">
-            {item.principle && (
-              <div className="pf-hr-principle">
-                <span className="pf-hr-principle-label">Strategy</span>
-                {item.principle}
+            {isMulti && (
+              <div className="pf-hr-opt-tabs">
+                {options.map((o, i) => (
+                  <button
+                    key={i}
+                    className={`pf-hr-opt-tab ${selectedIdx === i ? 'active' : ''}`}
+                    onClick={() => setOptionIdx((s) => ({ ...s, [key]: i }))}
+                  >
+                    {o.label}
+                  </button>
+                ))}
               </div>
             )}
-            <div className="pf-hr-answer">{item.answer}</div>
-            {item.notes && (
-              <div className="pf-hr-notes">
-                <span className="pf-hr-notes-label">Delivery notes</span>
-                {item.notes}
-              </div>
-            )}
+            {renderAnswerBody(current)}
           </div>
         )}
       </div>
