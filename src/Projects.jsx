@@ -818,6 +818,215 @@ On the visual side, I used CNN-based feature extraction to capture logos, produc
       'Position as analytical depth, not core strength.',
     ],
   },
+
+  {
+    id: 'budget-versioning',
+    tier: 1,
+    year: '2025',
+    company: 'Intuit · QuickBooks Online IES',
+    title: 'Project Budget Versioning — Immutable, Copy-on-Write Revisions',
+    role: 'VERIFY: Frontend / Backend / Full-stack — set from your PRs',
+    tags: ['Financial Systems', 'Concurrency', 'Event-Driven', 'Audit'],
+    oneLine:
+      'Turned project budgets into auditable financial records: DRAFT is mutable in place, LOCKED is immutable copy-on-write, with optimistic concurrency and event-sourced version history.',
+    headline: {
+      model: 'Copy-on-write revisions',
+      concurrency: 'JPA @Version optimistic lock',
+      history: 'Transactional outbox → audit view',
+      states: 'DRAFT / LOCKED / HIDDEN',
+    },
+    narrative: `Project budgets feed downstream financial surfaces — estimate-vs-actuals, project profitability, approvals. Once a budget is published and acted on, its state at that moment must be reconstructable forever. Editing in place would destroy the record of what was approved.
+
+The design turns the budget into an auditable, versioned record. A budget is either a mutable DRAFT or a published LOCKED version. Editing a LOCKED budget doesn't overwrite it — the system snapshots the current revision as immutable history (status INACTIVE) and creates a new ACTIVE revision (copy-on-write). Concurrency is protected by JPA optimistic locking, surfaced to the frontend as a syncToken. Every change emits a domain event through a transactional outbox that feeds the platform audit-history view.
+
+VERIFY OWNERSHIP: replace this paragraph with your actual slice. Frontend candidates: the Save-as-Draft / Save-and-Publish split, syncToken round-trip, DRAFT/LOCKED state gating, version-history link-out. Backend candidates: the handleUpdateBudget copy-on-write branch, createActiveVersion deep copy, outbox event emission, the BusinessBudgetHeader entity model. Only claim what your PRs show.`,
+    problem: [
+      'Published budgets are financial records — their approved state must be reconstructable, not overwritten.',
+      'Editing in place destroys audit history; accountants lose what they signed off on.',
+      'Two users can edit the same budget — silent overwrite would corrupt data.',
+      'Version history must never diverge from actual budget state (dual-write hazard).',
+      'Drafts are iterated repeatedly — naive per-save versioning would explode revision counts.',
+    ],
+    architecture: [
+      {
+        name: 'Three Orthogonal Concepts',
+        detail:
+          'state (DRAFT/LOCKED/HIDDEN — lifecycle) vs status (ACTIVE/INACTIVE — which revision is live) vs revision (version number, part of composite PK budgetId+revision+companyId). Separating lifecycle from currency keeps history rows abundant but queries simple (findByStatus ACTIVE).',
+      },
+      {
+        name: 'Copy-on-Write on Publish Edit',
+        detail:
+          'DRAFT mutates in place, same revision. Editing a LOCKED budget: mark current ACTIVE row INACTIVE (archive), insert new ACTIVE row with revision+1 and deep-copied lines. Invariant: exactly one ACTIVE revision per budget; every prior LOCKED version persists as INACTIVE = history.',
+      },
+      {
+        name: 'Optimistic Concurrency',
+        detail:
+          'editSequence is a JPA @Version token, round-tripped to the frontend as syncToken. Concurrent edit → second saveAndFlush throws ObjectOptimisticLockingFailureException → surfaced as conflict. Stale client rejected, never silent overwrite. Chosen over pessimistic because budget edits are low-contention.',
+      },
+      {
+        name: 'Transactional Outbox for History',
+        detail:
+          'Every change writes a domain event to an outbox table in the SAME DB transaction as the budget change. A relay publishes to the event bus → platform audit-history view. History can never diverge from state — no dual-write problem.',
+      },
+      {
+        name: 'Two Distinct Lock Paths (do not conflate)',
+        detail:
+          'Path A — user versioning: update with state=LOCKED, forks a revision (Save & Publish button). Path B — LockProjectBudgetServiceImpl: programmatic lock for the estimate/change-order flow, permission-gated, idempotent, only HIDDEN→LOCKED, rejects pending linked transactions. Different rules, different triggers.',
+      },
+      {
+        name: 'History Read Delegated to Platform',
+        detail:
+          'No bespoke version-history UI. Emit standard domain events, link out to the platform audit-history view keyed by domain entity type. Reuse over rebuild.',
+      },
+    ],
+    impact: [
+      'Published budgets became auditable, reconstructable financial records.',
+      'Concurrent edits protected without holding DB locks.',
+      'Version history guaranteed consistent with state via transactional outbox.',
+      'Feature-flagged progressive rollout without branching the codebase.',
+    ],
+    killerAnswer:
+      "The core decision is copy-on-write for published budgets. DRAFT is mutable in place so users iterate freely; the moment a budget is LOCKED it becomes immutable, and editing it forks a new revision while the old one persists as history. That plus optimistic concurrency and a transactional outbox for history is what turns a mutable form into an auditable financial record.",
+    grillQuestions: [
+      {
+        q: 'How do you keep old budget versions?',
+        a: 'Copy-on-write: on editing a LOCKED budget, mark the current ACTIVE row INACTIVE, insert a new ACTIVE row with revision+1 and deep-copied lines. PK is (budgetId, revision, companyId). Prior versions live on as INACTIVE.',
+      },
+      {
+        q: 'Two users edit the same budget simultaneously?',
+        a: 'JPA @Version editSequence, round-tripped as the frontend syncToken. The loser gets ObjectOptimisticLockingFailureException, surfaced as a conflict error. No silent overwrite.',
+      },
+      {
+        q: 'Why not overwrite drafts too?',
+        a: 'Drafts are work-in-progress; nobody has acted on them. Versioning only at publish checkpoints avoids revision explosion while iterating. Published budgets have downstream consumers, so their state must freeze.',
+      },
+      {
+        q: 'How does version history stay consistent with the data?',
+        a: 'Transactional outbox: the history event is written in the same DB transaction as the budget change, then relayed to the audit system. Atomic — no lost or phantom history entries, no dual-write.',
+      },
+      {
+        q: 'Difference between state and status?',
+        a: 'state = lifecycle (DRAFT/LOCKED/HIDDEN); status = which revision is live (ACTIVE/INACTIVE). Two independent axes so one budgetId can have many historical rows while ACTIVE lookups stay simple.',
+      },
+    ],
+    landmines: [
+      'VERIFY your ownership before claiming any layer — this project spans frontend TS and backend Java.',
+      'Do NOT conflate the two lock paths: user versioning (state=LOCKED, forks) vs LockProjectBudgetService (HIDDEN→LOCKED, estimate flow).',
+      'Do NOT claim you built the transactional outbox — it is platform infrastructure you integrate with.',
+    ],
+  },
+
+  {
+    id: 'ai-budget-import',
+    tier: 1,
+    year: '2025',
+    company: 'Intuit · QuickBooks Online IES',
+    title: 'AI-Assisted Budget Import — Human-in-the-Loop Extraction & Matching',
+    role: 'VERIFY: Frontend / Full-stack — set from your PRs',
+    tags: ['AI Integration', 'Async Systems', 'Human-in-the-Loop', 'Event-Driven'],
+    oneLine:
+      'Upload a spreadsheet, an internal AI service extracts line items and matches them to the products & services catalog with confidence tiers, and the user reviews only the uncertain rows before saving to a financial record.',
+    headline: {
+      task: '~30 min manual entry → upload + review',
+      tiers: '3 confidence tiers',
+      channels: 'ICE push + polling fallback',
+      loop: 'AI drafts, human confirms',
+    },
+    narrative: `Creating a project budget from scratch was ~30 minutes of manual data entry, and most users built very similar budgets. AI import lets a user upload an Excel sheet; an internal AI service (QBAI) extracts line items (name, description, quantity, rate) and matches each against the company's existing Products & Services catalog. The user reviews AI suggestions in a data grid with confidence tiers, corrects low-confidence matches, and saves.
+
+The framing that matters: this is not "AI does it for you." It is a human-in-the-loop system where AI drafts and the human confirms, because the output lands in financial records where wrong data is expensive. AI extraction is probabilistic; budget line items are deterministic downstream. The whole design manages that seam.
+
+VERIFY OWNERSHIP: replace with your actual slice. Likely-yours frontend files: ProjectBudgetAutofillSidePanel.tsx (upload/validate orchestration), useDocumentStatusPolling.ts (ICE + polling), projectBudgetDetailSlice.ts (status state machine), populateGridUtils.ts (match tier → grid rows). Only claim what your PRs show; disclaim the QBAI model and the ICE pub/sub infra.`,
+    problem: [
+      'Manual budget entry took ~30 minutes; users rebuilt near-identical budgets repeatedly.',
+      'AI extraction is probabilistic; budget lines are deterministic financial records — wrong data is expensive and silent.',
+      'LLM document comprehension is slow and variable — cannot block a request or UI thread on it.',
+      'Extracted items must be matched to the company catalog — semantic similarity, not string equality.',
+      'Real-time status events can be missed (dropped socket, tab switch) — need a fallback.',
+    ],
+    architecture: [
+      {
+        name: 'Three Generations Behind Flags',
+        detail:
+          'V1 synchronous (blocking GraphQL mutation, simulated progress). V2 async (long-running extraction, document status state machine via ICE pub/sub + polling fallback). V3 agentic (conversational agent widget). Each independently feature-flagged — incremental, safe delivery.',
+      },
+      {
+        name: 'Document Status State Machine',
+        detail:
+          'NO_DOCUMENT → IN_PROGRESS → EXTRACTED → COMPLETED, with EXTRACTION_FAILED and CANCELLED as terminal branches. Server-authoritative: re-fetched on load, so closing the browser mid-extraction does not lose the AI work.',
+      },
+      {
+        name: 'Confidence-Tiered Matching',
+        detail:
+          'Each record returns matchStatus (MATCH / PARTIAL_MATCH / NO_MATCH), a best-matched entity with a score, and ranked alternatives. Normalization rule: MATCH → matched entity, PARTIAL_MATCH → pre-fill top alternative, NO_MATCH → blank. This is a semantic-similarity problem (embeddings + thresholds), not string equality.',
+      },
+      {
+        name: 'Human-in-the-Loop Review',
+        detail:
+          'AiSparkles icon + popover renders ONLY on PARTIAL_MATCH / NO_MATCH rows, so the user fixes exactly the uncertain ones. Clean rows look clean. Only MATCH is pre-accepted; save is gated so probabilistic output never lands unreviewed.',
+      },
+      {
+        name: 'Async + Event-Driven with Fallback',
+        detail:
+          'Comprehension starts a backend job; completion resolves via ICE pub/sub push, with interval polling as fallback (5s while IN_PROGRESS). Graceful degradation — polling guarantees eventual consistency if an event is missed.',
+      },
+      {
+        name: 'GraphQL BFF to Dedicated AI Service',
+        detail:
+          'All AI calls route to a dedicated QBAI GraphQL endpoint. One typed round-trip returns extraction + matching + confidence + alternatives, isolating the AI backend from core budgeting APIs.',
+      },
+      {
+        name: 'Composition Over Reinvention',
+        detail:
+          'Upload embeds the platform widget (smartdocs-web-platform/unified-upload) — reuses virus scanning, PCI/7216 compliance, allowed channels. Rebuilding financial-grade upload would be reckless.',
+      },
+      {
+        name: 'Guardrails',
+        detail:
+          'maxAllowedRecordsToBeImported = 100 triggers CANNOT_IMPORT_ALL_RECORDS; grid enforces the 3500-line cap. Prevents a huge sheet from degrading the grid or backend.',
+      },
+    ],
+    impact: [
+      '~30-minute manual data-entry task reduced to upload + review.',
+      'Correction telemetry per confidence tier gives a signal to tune AI match thresholds.',
+      'Human-in-the-loop kept probabilistic AI output out of financial records unreviewed.',
+      'Progressive rollout (sync → async → agentic) without branching the codebase.',
+    ],
+    killerAnswer:
+      "The design principle is: AI drafts, human confirms — and the UI must make it structurally impossible to accidentally accept a low-confidence match. AI extraction is probabilistic and this data becomes financial records, so every row carries a confidence tier, only high-confidence matches auto-accept, and the review UI flags exactly the uncertain rows for human confirmation before save.",
+    grillQuestions: [
+      {
+        q: 'How do you handle a slow (minutes-long) extraction without freezing the UI?',
+        a: 'Async job + ICE push with polling fallback. UI shows a non-blocking state; status is server-authoritative and re-fetched on load, so the user can navigate away and come back. LLM latency is a batch-job profile, not a DB-query profile.',
+      },
+      {
+        q: 'What if the AI matches the wrong product?',
+        a: 'Confidence tiers. Only MATCH is pre-accepted. PARTIAL_MATCH pre-fills the top alternative but flags the row; NO_MATCH leaves it blank so the user must pick. Wrong matches are caught at review before they reach the financial record.',
+      },
+      {
+        q: 'Lost websocket event or multiple tabs?',
+        a: 'Polling fallback plus server-authoritative status. The status is re-queried, so state converges regardless of a missed push event.',
+      },
+      {
+        q: 'How is matching done — string equality?',
+        a: 'No — semantic similarity. Standard modern pattern is embeddings (text → vectors) ranked by cosine similarity, with thresholds becoming the three tiers. VERIFY: this is the QBAI-owned layer; describe the pattern, disclaim the implementation.',
+      },
+      {
+        q: 'Why Redux, not local state?',
+        a: 'Cross-component shared import state (side panel, grid, modal, toast), multi-step async orchestration (validate → comprehend → poll → save), and testability in isolation.',
+      },
+      {
+        q: 'How would you know if the AI degraded in production?',
+        a: 'Match-acceptance telemetry per tier. If MATCH-tier rows are suddenly corrected more often, the model is degrading — alert on that rate. VERIFY what telemetry actually exists before claiming it.',
+      },
+    ],
+    landmines: [
+      'VERIFY your ownership — disclaim the QBAI model and the ICE pub/sub infra explicitly.',
+      'Do NOT call this "AI does it for you" — the entire value is human-in-the-loop confirmation.',
+      'Do NOT claim matching accuracy numbers — those belong to the model owners.',
+      'Honest weaknesses to raise yourself: simulated progress bar, dead guard in polling hook, global mutable state in asyncTopic.tsx.',
+    ],
+  },
 ];
 
 const TIER_LABELS = {
@@ -1058,6 +1267,20 @@ const DEEP_DIVES = {
         { q: 'If you rebuilt this from scratch today, what would you change?', a: 'Multi-tenant middleware from day one to avoid per-team infra duplication. Better self-serve onboarding to reduce time-to-value. Streaming capture to reduce storage cost.' },
         { q: 'What is the deepest lesson you took from this?', a: 'Blast radius must be structural, not procedural. Do not trust "we will not misuse this" — design so misuse is architecturally impossible. Mocks at the network boundary, not conventions in code.' },
       ],
+      conceptualFoundations: [
+        { q: 'What does "terminating TLS" actually mean, and why is it needed here?', a: 'TLS encrypts bytes between two endpoints; anyone in the middle sees opaque ciphertext. "Terminating" means: this is the point where the encrypted connection ends — the component holding the private key performs the handshake and decrypts the stream into plaintext HTTP. GoReplay needs HTTP-level visibility (method, path, headers, body) to capture anything replayable — and TLS session keys are ephemeral per-connection, so ciphertext captured on the wire can never be decrypted later. Decryption must happen before the capture point. Nginx-1 terminates, GoReplay passively reads the plaintext gap, Nginx-2 re-encrypts so the app receives TLS unchanged. GoReplay itself never encrypts or decrypts anything — Nginx does both. The security line: plaintext exists only inside the pod, so the trust boundary matches the physical boundary.' },
+        { q: 'Is the traffic on the event bus encrypted or plaintext, and why?', a: 'Encrypted — but with payload-level encryption (IDPS keys), which is different from TLS. TLS protects data in motion between two endpoints; payload encryption protects the data itself wherever it sits — on Kafka with retention, in the validator DB. Shared infrastructure with customer financial data cannot hold readable payloads for anyone with topic access. The validator holds the keys and decrypts only at comparison time. Full journey: TLS-encrypted → Nginx-1 decrypts → captured plaintext → IDPS-encrypted → bus → decrypted inside the validator.' },
+        { q: 'How is the cloned database actually created, and why does weekly refresh not make it uselessly stale?', a: 'Cloning is storage-level snapshot + restore — copy-on-write at the block level, which clones terabytes in minutes; the clone shares blocks with the source and diverges as writes happen. Weekly is acceptable because of what replay validates: for write workflows, the rows being compared were just created BY the replay seconds after production created its copy — both sides executed the same request against roughly the same prior state, so staleness of unrelated old data is irrelevant. For reads, staleness can cause divergence — handled by the time-window-bounded comparison (request_timestamp ± Δ) and by classifying known-drift as informational, not failure. Crucially the clone has NO live replication: a replica would receive each write twice (once via replication, once via replay). Independence means replay owns all mutation, making each replay campaign a clean, reproducible experiment.' },
+        { q: 'Walk me through exactly how Envoy + Wiremock make downstream writes safe.', a: 'The parallel server runs real code that makes real outbound calls — payments, notifications. Envoy is deployed as the egress proxy: every outbound call from the parallel app routes through it invisibly (the app thinks it is calling the real service). Per destination, Envoy allows (safe reads), blocks, or reroutes to Wiremock. Wiremock is a programmable fake HTTP server returning plausible responses — right status, right shape, templated fields echoing request IDs. The key insight: the application code path executes COMPLETELY — builds the request, sends it, parses the response, updates its own DB, continues. Only the external effect never happened. Blast radius is zero by construction: the parallel pod has no network path to real downstreams; misconfigured app code cannot bypass a network-layer interception. Trade-off to state: you lose true downstream e2e validation — accepted, because corrupting downstream production is categorically worse, and downstream correctness is validated in non-prod.' },
+        { q: 'Explain Kafka partitioning and how transaction_id guarantees request/response pairing.', a: 'A topic splits into partitions — independent append-only logs. Partition = unit of parallelism AND unit of ordering: within one partition, offsets give absolute order; across partitions there is no ordering guarantee at all. Producers send with a key; Kafka computes hash(key) % partitions — same key always lands on the same partition. Consumers in a group divide partitions, each partition owned by exactly one consumer. Keying both request and response with transaction_id means: same hash → same partition → strict order (request before response) → same consumer sees both. Pairing becomes trivial — no cross-consumer coordination, no distributed state. If asked "but Kafka does not guarantee global ordering": correct, and we never needed it — we needed per-transaction ordering, which per-key partitioning provides exactly. The hard problem was dissolved by choosing the right key.' },
+        { q: 'Why does the validator middleware need its own database, and what does it store?', a: 'Comparison is stateful across time: the active response arrives at T, the parallel response seconds later — something must hold the first until the second exists. Beyond buffering, you need lookup by transaction_id, persistence of comparison verdicts, and retention of full request/response pairs for debugging (engineers pull both payloads side by side on mismatch) and for later re-replay. It stores: request, both responses, latencies from both sides, workflow metadata, and verdicts. On which engine: the source does not name one — reason from access pattern instead: append-heavy writes, key lookup by transaction_id, TTL expiry, no complex joins. That shape fits key-value/document stores well. Saying "the access pattern matters more than the engine" is the stronger interview answer.' },
+        { q: 'Where does BFS come into data validation? Explain like I have never seen it.', a: 'A relational schema IS a graph: rows are nodes, foreign-key references are edges. One write request (create invoice) writes a small connected subgraph — invoice row, its line rows, tax entries, audit record — all hanging off one parent record. To validate data parity you must compare exactly those rows in both DBs, and full-table diff at TB scale is impossible and meaningless. BFS = explore the graph level by level from a start node. Start: (tenant_id, parent_record_id). Level 1: rows in configured impacted tables directly referencing the parent. Level 2: rows referencing those. Bound everything by the time window (request_timestamp ± Δ). Run the identical traversal on active and clone, compare the two row-sets ignoring variable fields. Cost: O(rows this request touched) — typically tens — instead of O(table). The time window does double duty: bounds the traversal AND excludes clone-staleness drift.' },
+        { q: 'What do TP90/95/99 actually measure, and what does "slow workflows surfaced before release" mean concretely?', a: 'Averages lie: 99 requests at 100ms + 1 at 10s averages to ~199ms while 1% of users suffered. TPxx = the latency value that xx% of requests beat; TP99 is the experience of the unluckiest 1% — which at 1M requests/day is 10,000 real requests. The validator computes per-workflow percentiles for active and parallel over the SAME replayed traffic: same requests, same data, two code versions — any distribution difference is attributable to the code. Concrete scenario: Hibernate 3→5 upgrade on the parallel server; most workflows identical, but estimate-update TP99 jumps 800ms → 4s from a changed query plan. That regression becomes a dashboard finding BEFORE release instead of a production incident after — that mechanism is the "200+ hours saved" claim. Per-workflow, not global, because one workflow\'s regression drowns in a million mixed requests.' },
+        { q: 'How does 2×/3× load replay mechanically work, and where is the traffic stored for replay?', a: 'Two storage layers: Kafka retention (messages persist for the retention window; re-consuming = resetting consumer offsets) and the validator DB (explicit pairs, selectable long after). Speed multiplication works on inter-arrival gaps: captured traffic is a timestamped sequence, and the gaps encode production load shape. 1× preserves gaps; 3× compresses every gap by three — same requests, same order, triple the arrival rate. This is real traffic mix (real endpoint distribution, payload sizes, tenant skew) at hypothetical future volume — which no synthetic load test reproduces. Staleness: for stress testing (the main 3× use) it is irrelevant — you measure saturation, error rates, latency under load, and week-old reads do the same work. For correctness replays, refresh the clone first; since the clone has no replication, replayed writes are the only writes — a fresh clone + a stored traffic run is a clean, repeatable experiment.' },
+        { q: 'How do you ACTUALLY perform BFS on a database — is there a graph in memory?', a: 'No in-memory graph. The graph is implicit in the foreign keys, and each LEVEL of the BFS is one SQL query that follows FKs outward. Normal BFS calls node.getNeighbors(); here getNeighbors() IS a SQL query — "give me all rows whose FK points at this row." Concretely for create-invoice (invoice 5001): Level 0 = SELECT the invoice by id + time window. Level 1 = for each table referencing invoices (invoice_lines, audit_log), SELECT where invoice_id=5001 within the window. Level 2 = SELECT from tables referencing THOSE rows (tax_entries where invoice_line_id IN the level-1 ids). Stop when no table references the current level — those are leaf nodes. Underneath it is textbook BFS (queue + visited set) where the "adjacency" is a SQL call. Two guardrails keep it bounded: the per-workflow config declares which tables the workflow touches (so you never walk the whole schema out to the tenant and back), and the time window (created_at BETWEEN t_start AND t_end) on every query scopes each hop to rows THIS request wrote. Schema graph = which edges CAN exist; data BFS = which edges DO exist for this request.' },
+        { q: 'Interview delivery: what is the clean 4-beat opener for this project?', a: 'Beat 1: a general-purpose traffic capture and replay framework for validating high-risk backend changes against real production traffic, safely, without impacting customers or downstreams. Beat 2: the problem — 100k+ daily customers, financial data; on a risky change (Oracle exit, Hibernate upgrade, MySQL→Postgres) manual/automated tests only cover cases you thought of and cannot reproduce production shape. Beat 3: core idea — run a passive parallel server with the change applied and replay real traffic against it, comparing response parity, data correctness, and latency; the word passive is load-bearing (never serves a customer, never touches downstream state). Beat 4: mechanism + impact — sidecar captures, Kafka buffers, a replay validator compares three dimensions, persisted traffic enables 2×/3× load testing; backed multiple migrations with zero customer-facing incidents. Frame the DB migration as ONE example of a platform, not the reason the platform exists.' },
+        { q: 'Interview delivery: the reflex that upgrades every answer?', a: 'After stating any design choice, add the sentence "...because the alternative would have...". It forces the reasoning out. Sidecar because in-process would couple the failure domain and release lifecycle to the app. Re-encrypt because plaintext on the network would break the trust boundary. Mock writes at the network layer because doing it in code would be safe-by-convention not safe-by-construction. The consistent trap to avoid: stating the WHAT and going quiet on the WHY, or answering only the part you are sure of when asked three things. When asked three things, answer three things — the part you are tempted to skip (the staleness reasoning, the by-construction proof) is usually the highest-scoring part.' },
+      ],
     },
   },
   'cms-migration': {
@@ -1233,6 +1456,20 @@ const DEEP_DIVES = {
       career: [
         { q: 'What is the transferable lesson here?', a: 'In distributed systems, absence of confirmation is not confirmation of absence. Design every cross-service call so the true outcome is discoverable after the fact — correlation ids, idempotency, reconciliation.' },
         { q: 'If you rebuilt it, what would you do differently?', a: 'Write the FMEA before the implementation, not alongside. Build the reconciliation-queue dashboard on day one so the eventual-consistency window is visible from the start.' },
+      ],
+      conceptualFoundations: [
+        { q: 'Why does this problem exist at all — what is the root cause?', a: 'A project is two records in two systems that must agree. QuickBooks never rebuilt the transaction/reporting layer to understand a "project" entity — that layer speaks customer-hierarchy. So a project is represented as a project record in the projects service (IPM) PLUS a sub-customer record in CMS, linked by a projectRef. Every create/update/inactivate must land in both systems. The project is only correct when both records agree. That dual-record reality is the source of every hard problem here.' },
+        { q: 'Why does "sub-customer to project conversion" exist specifically?', a: 'Before real Projects existed, users tracked jobs as sub-customers under a customer (the Customer:Job model inherited from Desktop). Millions had years of history structured that way. Conversion lets them adopt the Projects experience without losing history — IPM creates a project record and links it to the existing sub-customer. It is the sharpest case of the dual-record problem because the sub-customer already has real transactions hanging off it, so getting the dual-write wrong does the most damage. That is why the resiliency POC was scoped to conversion.' },
+        { q: 'What were the THREE things wrong with the legacy design?', a: 'One — two sync paths writing the same state (monolith APIs plus a v4 fallback event), which race, diverge, and rot silently because the rarely-exercised fallback is least tested exactly when it runs. Two — a timeout was treated as a failure, when a timeout actually means the outcome is UNKNOWN (the write may have succeeded and the response was lost). Three — the monolith was being decommissioned anyway, so the migration was forced, and the team used the forcing function to fix the consistency model rather than port the broken design.' },
+        { q: 'Why is "two racing sync paths" fundamentally a drift machine?', a: 'You cannot reason about the final state of a system where two independent mechanisms both claim authority over the same data. They race (nondeterministic order), diverge (one succeeds, one fails), and the fallback path is the least-tested code running when the primary is already failing. The fix is a DELETION not a cleverness — collapse to one authoritative CMS API path. One writer is analyzable; two writers are undecidable.' },
+        { q: 'Why is "timeout = failure" the deeper bug, and how did you fix it?', a: 'It is the Two Generals problem in production: from the caller side, "request lost" and "response lost" look identical — silence. Treating that silence as failure means you leave IPM updated while believing CMS never got the write — silent drift, one lost-response at a time. Fix: treat timeout as UNKNOWN, then resolve it with a READ not a guess. Every call carries a correlation ID; bounded timeouts make failure detectable at a known point; on timeout, follow-up read to CMS by correlation ID; if the sub-customer exists roll forward (finalize), if not roll back or idempotent-retry.' },
+        { q: 'What is the single most important subtlety in the reconciliation design?', a: 'You must RECONCILE BEFORE you COMPENSATE. If you blindly roll back on every timeout, and the CMS call had actually succeeded, you soft-delete a project that CMS still references — manufacturing the exact OPPOSITE inconsistency you were preventing. Compensation on an unknown outcome creates drift. So reconciliation decides (read the true state), compensation executes. This is the point that proves you operated the system rather than read about the saga pattern.' },
+        { q: 'How does idempotency make retry safe here?', a: 'The idempotency key is projectId. If a call timed out but actually succeeded and you retry, CMS sees the same key and returns the existing sub-customer instead of creating a duplicate. Without it, every retry risks a duplicate sub-customer — converting temporary uncertainty into permanent bad data. Idempotency is what turns retry from a gamble into a safe strategy.' },
+        { q: 'What are the per-operation compensation recipes?', a: 'Create fails at CMS → soft-delete the just-created IPM project (must retain its ID; soft delete is idempotent, audit-preserving, no FK cascade). Update fails → revert the IPM entity to its previous version (must hold the prior model before mutating). Inactivate fails → undelete, flip deleted=false. And compensation is hardened: runs once then async-retries 3x under bounded timeouts, because "what if the compensation itself fails" needs a real answer.' },
+        { q: 'Why sync API for the user action but async events for downstream?', a: 'The user-facing write (project ↔ CMS) needs a deterministic outcome the user sees immediately — their next action depends on it — so it is a synchronous API. Downstream systems (STS, ETS, FTS, QBTime) hold their own denormalized projectRef and tolerate bounded staleness, so IPM publishes a domain event they consume asynchronously. Two different consistency requirements, two different mechanisms — not one-size-fits-all. Rolled out behind two flags (publish, consume) so either side toggles independently.' },
+        { q: 'Which distributed-transaction patterns apply, and why NOT 2PC?', a: 'Not 2PC: IPM and CMS are separate services with separate DBs; 2PC needs both to hold locks between prepare and commit under a coordinator. CMS is a shared platform service that will not hold locks for your workflow, and 2PC blocking couples your availability to coordinator health on a user-facing path. What it actually is: an orchestrated saga (two local transactions, IPM service layer as orchestrator, compensating transaction on failure) — with the twist that reconciliation gates the compensation. The downstream event publication is a dual-write problem, which is what the transactional outbox pattern solves (verify whether this publish used the outbox before claiming it).' },
+        { q: 'Where does the 95% sync-failure reduction come from?', a: 'A sync failure = a detected mismatch between IPM project state and CMS sub-customer state. Before: a drift detector counted mismatches daily on the legacy paths (baseline). After: a cross-service consistency monitor counts them in near-real-time on the new path. 95% is (baseline − new)/baseline. Causally credible because each legacy failure category maps to a specific fix: dual-path race gone, timeouts reconciled instead of becoming permanent drift, idempotent retries killing duplicate-creation. Be ready for "why not 100%?" — honest residual: extended CMS outages that exhaust retries, novel failure modes.' },
+        { q: 'The 90-second spoken spine for this project?', a: 'A project is two records in two systems that must agree, because the transaction layer speaks customer-hierarchy not projects. The old design had two racing writers and treated lost responses as failures, so they drifted silently. The new design has one authoritative CMS API path, treats a timeout as an unknown to be reconciled by reading CMS rather than guessing, retries idempotently, gives every failure a tested compensation — reconciling before compensating so it never manufactures the opposite inconsistency — and propagates downstream via async events while keeping the user action synchronous. Result: ~95% fewer sync failures.' },
       ],
     },
   },
@@ -2172,6 +2409,383 @@ const DEEP_DIVES = {
       positioning: [
         { q: 'Why is this project in your portfolio if backend systems are your core strength?', a: 'It demonstrates analytical range: problem formulation, feature reasoning, metric selection under ambiguity. The honest framing: I can reason about ML systems, and I choose to build scalable backend systems. Secondary project, deliberately.' },
         { q: 'Is this a GenAI project?', a: 'No, and do not dress it as one. It is classical multi-modal classification. Claiming GenAI invites questions I would then have to walk back — accuracy about your own work is the credibility play.' },
+      ],
+    },
+  },
+  'budget-versioning': {
+    framing:
+      'A financial-records + concurrency + event-driven story. Spans frontend TS and backend Java — VERIFY which layer is yours before claiming. Everything below is grounded in the repo; the ownership scope is the one thing only your PRs can confirm.',
+    firstPrinciples: {
+      reduction:
+        'A published budget is a financial record. Once approved, its state at that moment must be reconstructable forever, even after the user edits it.',
+      invariants: [
+        'Exactly one ACTIVE revision per budget at any time. Everything else is history.',
+        'A LOCKED (published) revision is immutable — it is never overwritten, only superseded.',
+        'No user silently overwrites another user\'s edit — concurrency is guarded.',
+        'Version history can never diverge from actual state — they commit together or not at all.',
+        'You cannot un-publish: LOCKED → DRAFT is forbidden (INVALID_LOCKED_STATE).',
+      ],
+      tensions: [
+        'Editability (users keep changing budgets) ⇄ Auditability (accountants need the approved snapshot).',
+        'Version on every save (safe, but revision explosion during drafting) ⇄ Version only on publish (efficient, drafts have no history).',
+        'Concurrent editing allowed ⇄ No silent overwrite.',
+        'Pessimistic locking (blocks, safe) ⇄ Optimistic locking (scales, occasional conflict retry).',
+      ],
+      synthesis:
+        'Split the budget\'s life into two modes. DRAFT is mutable in place — iterate freely, no revisions accumulate. LOCKED is immutable and copy-on-write — editing forks a new revision, the old one becomes append-only history. Guard concurrency with optimistic locking (a syncToken round-trip) because budget edits are low-contention. Emit a domain event on every change through a transactional outbox so history can never diverge from state.',
+    },
+    decisions: [
+      {
+        q: 'Copy-on-write immutable revisions vs in-place mutation for published budgets?',
+        options: [
+          'In-place mutation: simplest, destroys approved-state history.',
+          'Copy-on-write: archive current as INACTIVE, insert new ACTIVE revision.',
+        ],
+        chosen: 'Copy-on-write.',
+        why: 'Financial history must be reconstructable and auditable — you cannot lose what a budget looked like when it was approved. On editing a LOCKED budget: mark current ACTIVE INACTIVE, insert revision+1 as ACTIVE with deep-copied lines.',
+        tradeoff: 'Table growth + a "which revision is ACTIVE" query. Worth it for auditability.',
+      },
+      {
+        q: 'One overloaded enum, or separate state and status?',
+        options: [
+          'One enum mixing lifecycle and currency: fewer fields, ambiguous queries.',
+          'state (DRAFT/LOCKED/HIDDEN) + status (ACTIVE/INACTIVE) as two axes.',
+        ],
+        chosen: 'Two independent axes.',
+        why: 'Lifecycle (is it editable/published) and currency (is this the live row) are orthogonal. Splitting them lets one budgetId own many historical rows while ACTIVE lookups stay a simple findByStatus.',
+        tradeoff: 'Two fields to reason about instead of one. Pays back in query simplicity and history clarity.',
+      },
+      {
+        q: 'Optimistic or pessimistic concurrency?',
+        options: [
+          'Pessimistic: hold a DB lock during editing — blocks, does not scale.',
+          'Optimistic: @Version token, detect conflict at write time.',
+        ],
+        chosen: 'Optimistic (@Version editSequence).',
+        why: 'Budget edits are low-contention — two people editing the same budget at once is rare. Optimistic avoids holding DB locks; conflict surfaces as an exception at saveAndFlush and is shown to the user.',
+        tradeoff: 'Occasional conflict-retry instead of blocking. Correct default for this workload.',
+      },
+      {
+        q: 'Version on every save, or only on publish?',
+        options: [
+          'Every save: full history, revision explosion while drafting.',
+          'DRAFT mutable in place, only publish forks a revision.',
+        ],
+        chosen: 'Only publish forks.',
+        why: 'Drafts are work-in-progress — nobody has acted on them, so overwriting is safe. Publish is the meaningful checkpoint where downstream consumers appear, so that is where a frozen revision is created.',
+        tradeoff: 'Drafts have no intra-draft history. Acceptable — the auditable unit is the published version.',
+      },
+      {
+        q: 'Build a version-history UI, or emit events and link out?',
+        options: [
+          'Bespoke history UI: full control, reinvents a horizontal concern.',
+          'Emit domain events, link to the platform audit-history view.',
+        ],
+        chosen: 'Emit + link out.',
+        why: 'History is a cross-cutting concern across QuickBooks entities. The platform provides a canonical audit-history surface; emit standard domain events keyed by entity type and link to it. Reuse over rebuild.',
+        tradeoff: 'Less control over the history UX. Worth it to avoid drift from the platform surface.',
+      },
+    ],
+    algorithms: [
+      {
+        name: 'Copy-on-write revision creation',
+        description:
+          'On editing a LOCKED budget: (1) set current ACTIVE header status=INACTIVE, saveAndFlush; (2) createActiveVersion — copy header, status=ACTIVE, revision+1, editSequence+1, deep-copy each line into the new revision. Composite PK (budgetId, revision, companyId).',
+        complexity: 'O(lines) deep copy per publish edit.',
+        why: 'Immutability requires a full snapshot per published revision. Deep copy is the cost of a reconstructable audit trail.',
+      },
+      {
+        name: 'Optimistic lock via @Version',
+        description:
+          'editSequence is a JPA @Version column, round-tripped to the frontend as syncToken. On write, JPA compares the token; mismatch throws ObjectOptimisticLockingFailureException, surfaced as a conflict. Match increments the token.',
+        complexity: 'O(1) per write.',
+        why: 'Detects concurrent modification without holding locks. The stale client is rejected instead of clobbering.',
+      },
+      {
+        name: 'Transactional outbox for history events',
+        description:
+          'The domain event is written to an outbox table in the SAME DB transaction as the budget change. A relay reads the outbox and publishes to the event bus → audit-history view. Atomic: either both commit or neither.',
+        complexity: 'One extra insert per change.',
+        why: 'Eliminates the dual-write problem — a committed budget change with no history event, or a phantom event with no change, is impossible.',
+      },
+    ],
+    numbers: [
+      { metric: 'Line cap per budget', value: '3500', note: 'Same grid cap as Project Budgets. A single publish deep-copies up to this many lines.' },
+      { metric: 'States / statuses', value: '3 / 2', note: 'DRAFT/LOCKED/HIDDEN × ACTIVE/INACTIVE.' },
+      { metric: 'Composite PK', value: '(budgetId, revision, companyId)', note: 'Revision is part of the key — that is what makes multiple versions coexist.' },
+    ],
+    warStories: [
+      {
+        scenario: 'Two users edit the same revision',
+        whatHappened:
+          'Concurrent edits to the same ACTIVE revision would, without protection, let the second writer silently overwrite the first.',
+        howResolved:
+          '@Version editSequence: the second saveAndFlush throws ObjectOptimisticLockingFailureException. The frontend round-trips syncToken, so the stale client is rejected with a conflict error.',
+        lesson:
+          'Optimistic locking converts "silent data loss" into "explicit, recoverable conflict" — the right trade for low-contention financial edits.',
+      },
+      {
+        scenario: 'Attempt to un-publish a LOCKED budget',
+        whatHappened:
+          'A LOCKED → DRAFT transition would let a published, possibly-approved budget become mutable again — destroying the audit guarantee.',
+        howResolved:
+          'Guarded: LOCKED → DRAFT throws INVALID_LOCKED_STATE. Once published, the only forward path is a new copy-on-write revision.',
+        lesson:
+          'Immutability is enforced by rejecting illegal transitions at the write layer, not by convention in the UI.',
+      },
+      {
+        scenario: 'History diverging from state',
+        whatHappened:
+          'If the budget change committed but the history event publish failed separately, the audit view would show a different reality than the data (dual-write hazard).',
+        howResolved:
+          'Transactional outbox — event and change share one DB transaction; a relay publishes afterward. History can never be out of sync with state.',
+        lesson:
+          'Any "write data + publish event" flow is a dual-write risk; the outbox pattern is the standard, correct answer.',
+      },
+    ],
+    edgeCases: [
+      { case: 'Deleting a budget with history', handling: 'Full delete purges inactive revisions (deleteBudgetVersionsWithStatus INACTIVE) — history is tied to the budget lifecycle.' },
+      { case: 'HIDDEN state', handling: 'Used by the estimate/change-order lock path (Path B). Leaks into backend logic without being exposed to the frontend — a known cognitive-load smell.' },
+      { case: 'Conflict UX', handling: 'Surfaces as a generic conflict error today — no auto-merge or field-level "someone else edited this" reconciliation. A known weakness / improvement.' },
+      { case: 'Revision growth', handling: 'No cap or compaction — every publish deep-copies all lines. Heavily-edited budgets grow unbounded until full-delete. A real scaling concern to raise.' },
+    ],
+    whatIWouldChange:
+      'Retrospective opinion — verify before claiming as owned work. (1) Conflict UX: fetch the newer version, diff against pending edits, offer merge instead of a generic error. (2) Revision retention: a pruning policy or delta-based revision model to bound storage — more complex, real trade-off. (3) Unify or clearly separate the two lock concepts (state=LOCKED vs LockProjectBudgetService) — overlapping locks on one entity risk inconsistent invariants.',
+    chains: [
+      {
+        title: 'The publish-edit copy-on-write chain',
+        steps: [
+          { q: 'User clicks Save & Publish on a LOCKED budget — what happens on the backend?', a: 'Fetch current ACTIVE header, validate syncToken, read old state LOCKED. Copy-on-write branch: set current ACTIVE INACTIVE (archive), insert new header revision+1, editSequence+1, status ACTIVE, deep-copy lines.' },
+          { q: 'What is the invariant afterward?', a: 'Exactly one ACTIVE row for that budgetId, one more INACTIVE row than before, revision +1, syncToken +1, and one new event in the outbox awaiting relay.' },
+          { q: 'What feeds version history?', a: 'The domain event emitted in the same transaction, relayed via outbox to the platform audit-history view.' },
+          { q: 'Honest boundary?', a: 'That whole sequence is BusinessBudgetWriterImpl.handleUpdateBudget — VERIFY whether you authored it or integrated against it.' },
+        ],
+      },
+      {
+        title: 'The concurrency chain',
+        steps: [
+          { q: 'How is a concurrent edit detected?', a: 'JPA @Version editSequence, round-tripped as syncToken. Mismatch at saveAndFlush throws ObjectOptimisticLockingFailureException.' },
+          { q: 'Why optimistic, not pessimistic?', a: 'Budget editing is low-contention; holding DB locks is overkill and hurts scale. Optimistic pays only an occasional conflict retry.' },
+          { q: 'What does the user see?', a: 'A conflict error — today generic. Better UX would diff and offer merge.' },
+        ],
+      },
+      {
+        title: 'The two-lock-paths chain (do not conflate)',
+        steps: [
+          { q: 'What is Path A?', a: 'User versioning: update with state=LOCKED via Save & Publish. DRAFT edits in place; editing LOCKED forks a revision.' },
+          { q: 'What is Path B?', a: 'LockProjectBudgetService: programmatic lock for the estimate/change-order flow. Permission-gated, idempotent, only HIDDEN → LOCKED, rejects pending linked transactions, soft-deletes if no active lines.' },
+          { q: 'Which did you work on?', a: 'VERIFY and state it precisely. Claiming both without evidence is the fastest way to get exposed.' },
+        ],
+      },
+    ],
+    followUps: {
+      firstPrinciples: [
+        { q: 'Why immutable revisions instead of just editing in place?', a: 'A published budget is a financial record that downstream consumers act on. Its approved state must be reconstructable forever. Copy-on-write preserves it; in-place mutation destroys it.' },
+        { q: 'Why only fork on publish, not on every draft save?', a: 'Drafts are work-in-progress with no external consumers, so overwriting is safe and avoids revision explosion. Publish is the checkpoint where a frozen version becomes necessary.' },
+        { q: 'Why is history a separate concern from state?', a: 'History is a cross-cutting platform capability; state is budget-specific. Emitting events and linking to the platform audit view keeps the two decoupled and avoids reinventing history.' },
+      ],
+      concurrency: [
+        { q: 'Walk me through the exact optimistic-lock failure path.', a: 'FE loads a budget, holds editSequence as syncToken. On save it sends it back. Backend @Version compares; if the row changed in between, saveAndFlush throws ObjectOptimisticLockingFailureException → surfaced as conflict. No overwrite.' },
+        { q: 'Why not last-write-wins?', a: 'Financial data — a silent overwrite loses a real edit an accountant may have made. Detect-and-reject is the only safe default.' },
+        { q: 'What would a better conflict UX look like?', a: 'Fetch the newer revision, diff it against the user\'s pending edits, show conflicting fields, offer merge — instead of a generic error that forces a restart.' },
+      ],
+      distributedSystems: [
+        { q: 'Why is the outbox necessary — why not just publish the event after commit?', a: 'Publish-after-commit can fail after the DB commits, leaving state with no history event. Outbox writes the event in the same transaction, so the two are atomic. Classic dual-write elimination.' },
+        { q: 'Who relays the outbox and what if the relay is down?', a: 'A separate relay reads the outbox and publishes; if it is down, events accumulate durably and drain on recovery. VERIFY: the outbox infra is platform-owned — you integrate with it.' },
+      ],
+      ownership: [
+        { q: 'What did YOU build here?', a: 'VERIFY from PRs. Frontend slice: the Save-as-Draft/Save-and-Publish split, syncToken round-trip, DRAFT/LOCKED state gating, version-history link-out. Backend slice: the copy-on-write branch, createActiveVersion, outbox emission, the entity model. State exactly one honestly.' },
+        { q: 'What did you NOT build?', a: 'Disclaim explicitly: the transactional outbox infra (platform), the audit-history view (platform), and whichever of the two lock paths you did not touch.' },
+      ],
+    },
+  },
+  'ai-budget-import': {
+    framing:
+      'An AI-integration + async-systems + human-in-the-loop story. The value is the seam between a probabilistic AI upstream and a deterministic financial record downstream. VERIFY your slice; disclaim the QBAI model and the ICE pub/sub infrastructure.',
+    firstPrinciples: {
+      reduction:
+        'A budget line item is a financial record; AI extraction is probabilistic. How do you get AI speed without letting probabilistic output silently become deterministic financial data?',
+      invariants: [
+        'Wrong data in a budget flows into profitability and estimate-vs-actuals reports — unrecoverable once acted on.',
+        'Probabilistic AI output must never land in a financial record without explicit human confirmation.',
+        'LLM comprehension is slow and variable — no request or UI thread may block on it.',
+        'Document status is server-authoritative — closing the browser must not lose the AI work.',
+        'The user must be shown exactly which rows are uncertain — no more, no less.',
+      ],
+      tensions: [
+        'Automation speed (full auto is faster) ⇄ Correctness (humans catch errors).',
+        'User trust in AI ⇄ user attention (too many warnings → all ignored; too few → silent errors).',
+        'Model probability (scores) ⇄ product certainty (the UI must translate a score into "review this").',
+        'Real-time push (fast, can be missed) ⇄ polling (reliable, slower).',
+      ],
+      synthesis:
+        'Model AI output as a three-tier confidence classification per row. Auto-accept only the highest tier. Use a visual affordance (icon + popover) to focus the human on exactly the uncertain rows, and gate save so the system converges on committed-and-reviewed or explicitly-cancelled. Run comprehension as an async job with event-driven status plus polling fallback, because LLM latency is a batch-job profile, not a query profile.',
+    },
+    decisions: [
+      {
+        q: 'Auto-accept AI matches, or human-in-the-loop review?',
+        options: [
+          'Auto-accept, let users fix mistakes later: fast, silent errors in financial records.',
+          'Human-in-the-loop: AI drafts, human confirms uncertain rows before save.',
+        ],
+        chosen: 'Human-in-the-loop.',
+        why: 'Correction cost is asymmetric — an unreviewed wrong match becomes a wrong report a customer may show a client. AI extraction is probabilistic; the downstream record is deterministic. Confirmation is the safety net.',
+        tradeoff: 'The user does review work. Minimized by only flagging uncertain rows, not all rows.',
+      },
+      {
+        q: 'Two-tier (match/no-match), three tiers, or a raw confidence score?',
+        options: [
+          'Two tiers: no room for "probably right, please confirm".',
+          'Raw score: pushes "is 0.73 good enough?" onto the user.',
+          'Three discrete tiers: MATCH / PARTIAL_MATCH / NO_MATCH.',
+        ],
+        chosen: 'Three tiers.',
+        why: 'There is a real middle case — fairly sure, with ranked alternatives. Pre-fill the top guess but flag it, so confirmation costs a glance not data entry. Three tiers turn a probability into an action; a raw score would offload the judgment to the user.',
+        tradeoff: 'Threshold calibration between tiers must be tuned. The model team owns that; the UI captures the correction signal that feeds it.',
+      },
+      {
+        q: 'Synchronous request, or async job with status tracking?',
+        options: [
+          'Sync: simplest, but blocks a thread/UI on a slow, variable LLM call.',
+          'Async job + status state machine (ICE push + polling fallback).',
+        ],
+        chosen: 'Async (V2).',
+        why: 'LLM comprehension latency is proportional to output length plus queueing — seconds to minutes. You cannot hold a request thread on that. Status is server-authoritative and re-fetched on load, so work survives a browser close.',
+        tradeoff: 'More moving parts — status state machine, event channel, fallback. Necessary for a slow probabilistic dependency.',
+      },
+      {
+        q: 'Event-driven only, or event + polling fallback?',
+        options: [
+          'ICE pub/sub only: low-latency, but a dropped socket or tab switch loses the event.',
+          'ICE push + interval polling fallback.',
+        ],
+        chosen: 'Push + fallback.',
+        why: 'ICE gives fast completion signals; polling (5s while IN_PROGRESS) guarantees eventual consistency if a push is missed. Graceful degradation.',
+        tradeoff: 'Two mechanisms to maintain and keep idempotent on status transitions. Worth it for reliability.',
+      },
+      {
+        q: 'Build the upload, or embed the platform widget?',
+        options: [
+          'Build financial-grade upload: full control, reinvents virus-scan/PCI/compliance.',
+          'Embed smartdocs-web-platform/unified-upload.',
+        ],
+        chosen: 'Embed.',
+        why: 'The platform widget already handles virus scanning, PCI/7216 compliance, allowed channels, drag-drop. Rebuilding that for a financial product would be reckless. Composition over reinvention.',
+        tradeoff: 'Dependency on the widget contract. Acceptable — it is the compliant path.',
+      },
+    ],
+    algorithms: [
+      {
+        name: 'Match-tier → grid-row normalization',
+        description:
+          'getQbAiBudgetDetails / populateGridUtils maps each AI record to a grid row by matchStatus: MATCH uses the matched entity; PARTIAL_MATCH pre-fills the top alternative; NO_MATCH leaves the product/service blank so the user must pick.',
+        complexity: 'O(records).',
+        why: 'Encodes the confidence policy in one place — the difference between auto-accept, pre-fill-and-flag, and force-pick.',
+      },
+      {
+        name: 'Semantic matching (QBAI-owned)',
+        description:
+          'Extracted item text is matched against the P&S catalog by semantic similarity — standard modern pattern is embeddings (text → vectors) ranked by cosine similarity, thresholds becoming the tiers, with ranked alternatives as nearest neighbors.',
+        complexity: 'Embedding + nearest-neighbor on the backend.',
+        why: 'String equality fails on rewordings ("shaker white cabinet" vs "Custom Cabinets, White"). VERIFY: this is the QBAI layer — describe the pattern, disclaim the implementation.',
+      },
+      {
+        name: 'Document status state machine',
+        description:
+          'NO_DOCUMENT → IN_PROGRESS → EXTRACTED → COMPLETED, with EXTRACTION_FAILED and CANCELLED terminal. The Redux reducer maps status to UI booleans (autofillInProgress, dataFetched, error) and populates records on EXTRACTED.',
+        complexity: 'O(1) per transition.',
+        why: 'Server-authoritative status is what lets the user navigate away and return without losing extraction work.',
+      },
+    ],
+    numbers: [
+      { metric: 'Manual task time', value: '~30 min → upload + review', note: 'The core value proposition.' },
+      { metric: 'Confidence tiers', value: '3', note: 'MATCH / PARTIAL_MATCH / NO_MATCH.' },
+      { metric: 'Status states', value: '7', note: 'NO_DOCUMENT, IN_PROGRESS, EXTRACTED, COMPLETED, EXTRACTION_FAILED, CANCELLED (+ initial).' },
+      { metric: 'Polling interval', value: '5s while IN_PROGRESS', note: 'Fallback when ICE push is missed. VERIFY current value.' },
+      { metric: 'Import guardrail', value: '100 records', note: 'maxAllowedRecordsToBeImported triggers CANNOT_IMPORT_ALL_RECORDS. Grid caps at 3500 lines.' },
+    ],
+    warStories: [
+      {
+        scenario: 'AI matches the wrong product',
+        whatHappened:
+          'Semantic matching can suggest a plausible-but-wrong catalog item, especially for similarly-named products — and this becomes a financial line item.',
+        howResolved:
+          'Confidence tiers: only MATCH is pre-accepted; PARTIAL_MATCH pre-fills the top alternative but flags the row with the AI icon; NO_MATCH forces a manual pick. Wrong matches are caught at human review before save.',
+        lesson:
+          'For probabilistic output feeding deterministic records, the UI must make accidental acceptance of low-confidence matches structurally hard.',
+      },
+      {
+        scenario: 'Slow extraction / lost status event',
+        whatHappened:
+          'LLM comprehension can take minutes, and a completion push can be missed (dropped socket, tab switch), leaving the UI stuck IN_PROGRESS.',
+        howResolved:
+          'Async job with ICE push plus polling fallback (5s). Status is server-authoritative and re-fetched on load, so state converges regardless of a missed event.',
+        lesson:
+          'Never rely on a single delivery channel for a completion signal; pair push with a polling backstop.',
+      },
+      {
+        scenario: 'Hallucinated line item',
+        whatHappened:
+          'An LLM can produce plausible output not grounded in the input — an invented line, a misread subtotal, a guessed rate.',
+        howResolved:
+          'Human-in-the-loop confirmation is the architectural response — unreviewed extraction never saves. Model-side mitigations (structured output, grounding) are QBAI-owned.',
+        lesson:
+          'Assume hallucinations exist and cannot be fully eliminated by the model — design the UI as the safety net, not a nice-to-have.',
+      },
+    ],
+    edgeCases: [
+      { case: 'Multi-sheet workbook', handling: 'qbAiDocumentValidate returns sheetNames; multiple sheets open a sheet-select modal (you cannot guess which sheet is the budget). Single sheet auto-proceeds.' },
+      { case: 'Browser closed mid-extraction', handling: 'Status is server-authoritative; re-fetched on load. The AI work (the expensive half) is not lost; local grid edits are.' },
+      { case: 'Sheet exceeds 100 records', handling: 'CANNOT_IMPORT_ALL_RECORDS guard prevents swamping the grid/backend.' },
+      { case: 'Simulated progress bar', handling: 'No granular backend progress signal, so the bar advances on a timer and can sit at ~85% during a slow extraction. A perceived-performance choice and a known debt.' },
+    ],
+    whatIWouldChange:
+      'Retrospective opinion — verify before claiming. (1) Real backend progress events instead of a simulated bar. (2) Stream partial records so the first rows render while the rest extract. (3) Centralize the confidence-tier interpretation into one predicate (matchStatus is read in several places). (4) Match-acceptance telemetry per tier as the loop for tuning thresholds. (5) Replace the global mutable state in asyncTopic.tsx with a managed subscription; fix the dead guard in the polling hook.',
+    chains: [
+      {
+        title: 'The human-in-the-loop chain',
+        steps: [
+          { q: 'Why not auto-accept everything the AI matched?', a: 'The output lands in financial records that flow into profitability and estimate-vs-actuals. An unreviewed wrong match becomes a wrong report. Correction cost is asymmetric.' },
+          { q: 'How does the user know which rows to review?', a: 'The AI sparkles icon renders only on PARTIAL_MATCH and NO_MATCH rows. Clean rows have no icon; NO_MATCH has an empty required field caught by save validation.' },
+          { q: 'What stops a user clicking Save on everything?', a: 'They can, but they must actively ignore a visual signal. NO_MATCH rows fail required-field validation. Acceptance telemetry reveals if users are rubber-stamping partials.' },
+        ],
+      },
+      {
+        title: 'The async-latency chain',
+        steps: [
+          { q: 'Why can\'t this be synchronous?', a: 'LLM comprehension latency is proportional to output length plus queueing — seconds to minutes. Holding a request thread or UI on that is untenable.' },
+          { q: 'How is completion detected?', a: 'ICE pub/sub push, with interval polling fallback while IN_PROGRESS. Status is server-authoritative.' },
+          { q: 'What if the push is missed?', a: 'Polling re-queries status; state converges. Two channels, one authoritative source.' },
+        ],
+      },
+      {
+        title: 'The matching chain',
+        steps: [
+          { q: 'How is a spreadsheet item matched to the catalog?', a: 'Semantic similarity, not string equality — embeddings ranked by cosine similarity with thresholds becoming the tiers. VERIFY: QBAI-owned; describe the pattern, disclaim the implementation.' },
+          { q: 'Why keep the model internal, not use a public LLM API?', a: 'Two reasons: customer financial data cannot leave the trust boundary; and matching is company-specific — it embeds against the customer\'s own P&S catalog, so the matching infra and catalog live together.' },
+          { q: 'How would you know the model degraded?', a: 'Match-acceptance telemetry per tier — a rising correction rate on the MATCH tier signals degradation. VERIFY what telemetry exists.' },
+        ],
+      },
+    ],
+    followUps: {
+      firstPrinciples: [
+        { q: 'What makes this an engineering problem and not just an AI feature?', a: 'The seam: a probabilistic upstream feeding a deterministic financial record. The entire design — tiers, human-in-the-loop, gated save, async status — exists to manage that seam safely.' },
+        { q: 'Why three tiers rather than a confidence percentage?', a: 'A percentage offloads "is this good enough?" to the user. Three discrete tiers with distinct UI treatment turn a probability into an action: auto-accept, confirm-a-pre-fill, or force-pick.' },
+        { q: 'What is your answer to "how do you handle hallucinations"?', a: 'Assume they exist; the confirmation UI is the safety net. Human-in-the-loop is the architectural response to a probabilistic component upstream of a deterministic record.' },
+      ],
+      aiConcepts: [
+        { q: 'What does "extraction" actually do?', a: 'Turns an unstructured spreadsheet grid into typed records (name/description/quantity/rate). LLM-era: send cells to the model, it infers columns and structure across any layout — flexible but probabilistic.' },
+        { q: 'How is matching done under the hood?', a: 'VERIFY / boundary: I consumed the score and alternatives. My working model is embeddings + cosine similarity + thresholds — the standard semantic-match pattern — but the QBAI team owns the implementation.' },
+        { q: 'How would match quality be measured?', a: 'Precision and recall on the tiers; the thresholds between tiers are the tunable knobs that trade them off. My layer captures the correction signal that feeds that tuning.' },
+      ],
+      systemsDesign: [
+        { q: 'Why Redux, not local state or context?', a: 'Cross-component shared import state (side panel, grid, modal, toast), multi-step async orchestration (validate → comprehend → poll → save), and testability in isolation.' },
+        { q: 'Why a GraphQL BFF to a dedicated AI service?', a: 'One typed round-trip returns extraction + matching + confidence + alternatives together, and isolates the AI backend from core budgeting APIs.' },
+        { q: 'How does the status survive a page reload?', a: 'Server-authoritative document status re-fetched on load; the Redux reducer rehydrates from it. The AI work persists on the backend regardless of the client.' },
+      ],
+      ownership: [
+        { q: 'What did YOU build?', a: 'VERIFY from PRs. Likely frontend slice: the review UI (match-tier normalization, AiSparkles column config, alternatives popover), the Redux status slice, the polling hook, or the side-panel orchestration. Claim exactly what your commits show.' },
+        { q: 'What did you NOT build?', a: 'Disclaim: the QBAI extraction/matching model, the ICE pub/sub infrastructure, the upload widget internals, and V3 agentic if you did not work on it.' },
       ],
     },
   },
