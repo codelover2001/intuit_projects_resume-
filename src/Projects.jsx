@@ -239,94 +239,58 @@ The tricky part was handling distributed failure modes like timeouts and partial
       'Do NOT say "we used events" then describe the API approach — be precise about which was chosen.',
     ],
   },
-
   {
-    id: 'au-launch',
-    tier: 2,
-    year: '2024',
-    company: 'Intuit · QBO Advanced',
-    title: 'QuickBooks Online Advanced — Australia Launch',
-    role: 'Cross-team Execution Lead',
-    tags: ['Market Expansion', 'Cross-team Coordination', 'Risk Management', 'Production Readiness'],
+    id: 'test-parallelization',
+    tier: 1,
+    year: '[VERIFY year]',
+    company: 'Intuit',
+    title: 'Parallelized Integration Test Suite',
+    role: '[VERIFY — you drove this end to end]',
+    tags: ['Infrastructure', 'CI/CD', 'Concurrency', 'JVM'],
     oneLine:
-      'Sequenced 10+ dependent teams to launch QBO Advanced in Australia with no marketing, requiring rock-solid functional and analytics parity.',
-    headline: {
-      market: 'Australia · 250K subscribers',
-      teams: '10+ dependent teams',
-      launch: 'December 4 · No marketing',
-      goal: 'Mid-market expansion · disrupt Xero/MYOB',
-    },
-    narrative: `I worked on the Australia launch of QuickBooks Online Advanced, which was part of Intuit's strategy to move upmarket and compete directly with Xero and MYOB in the AU region. At the time, we had ~250K subscribers in Australia, but many mid-market customers were churning to third-party tools due to missing analytics and workflow capabilities.
-
-My role was to partner with 10+ teams to make Advanced production-ready for AU — not just by enabling features, but by ensuring functional parity, correctness, and upgrade safety in a new market with local constraints.
-
-This involved sequencing dependent feature rollouts, validating analytics pipelines, handling currency and locale-specific behavior, and enabling upgrade/downgrade flows safely across pre-prod and prod.
-
-We launched Advanced in Australia on December 4 with no active marketing, yet enabled a clean expansion path for ~250K subscribers and reduced reliance on third-party tools by delivering native analytics and workflows.`,
+      'Parallelized a 10K+ scenario Cucumber suite across 4 isolated JVM forks with per-fork company-level data partitioning — CI feedback 10 min → ~3 min.',
+    headline: '10 min → ~3 min CI',
+    narrative:
+      "The team's 10,000+ scenario Cucumber integration suite ran sequentially in ~10 minutes on every CI run — a quiet tax on every engineer, every push, pushing people toward bigger batched commits. I parallelized it across 4 JVM forks via Maven Surefire, choosing process isolation over threads because the legacy suite was full of static state that threads would share and corrupt. The hard problem was isolation against a shared database: I used per-fork company-level data partitioning — fork.id deterministically maps to a disjoint range of pre-provisioned companies, so two forks physically cannot touch the same data, with no runtime coordination. Along the way, scenario-count reconciliation I added to verify the change surfaced 550 ghost scenarios running against deleted code; a small static-analysis tool plus owner review removed them safely.",
     problem: [
-      'AU mid-market churning to Xero Ultimate, MYOB AccountRight Plus/Premier, third-party tools.',
-      'Missing native analytics + workflows in QBO Advanced for AU.',
-      'No active marketing on launch — product had to be flawless on day one.',
-      '~250K AU subscribers represented a strong upgrade opportunity if Advanced was production-ready.',
+      '10K+ scenarios, sequential, one JVM: ~10 min per CI run — dominated by per-scenario DB I/O, not CPU.',
+      'Ten minutes per push, multiplied across the team, meant context-switch tax and batched, riskier commits.',
+      'Legacy suite full of statics and singletons written for one-test-at-a-time — thread parallelism would expose years of unsafe assumptions as intermittent CI-only flakes.',
+      'All parallel workers share one test database: naive parallelism means cross-worker data collisions on financial test data.',
     ],
     architecture: [
-      {
-        name: 'Cross-team Sequencing',
-        detail:
-          'Drove feature enablement order across analytics, workflows, accountant flows, upgrade/downgrade, currency, locale. Mis-sequencing = silent corruption or upgrade lock.',
-      },
-      {
-        name: 'Pre-prod + Prod AU Companies',
-        detail:
-          'Enabled AU companies in pre-prod (Oct 27 cutoff) and prod with locale/currency setup, then ran experts testing, analytics enablement, and prod offers testing in sequence.',
-      },
-      {
-        name: 'Upgrade/Downgrade Safety',
-        detail:
-          'Validated upgrade/downgrade with soft blockers, including "Add new client" in QuickBooks Accountant, before GA.',
-      },
-      {
-        name: 'Analytics Correctness',
-        detail:
-          'Validated analytics pipelines against AU data patterns. Silent analytics drift is worse than visible failures — it erodes trust quietly.',
-      },
-      {
-        name: 'Locale Validation',
-        detail:
-          'Currency, content, functionality, compatibility with AU-local features — bug-fix loop with dependent teams through Oct 27.',
-      },
+      'Maven Surefire forkCount=4, reuseForks=true — four child JVMs, each with its own heap, statics, Spring context. Isolation is structural (OS process boundary), not disciplinary.',
+      'Four forks chosen empirically: near-linear speedup at 4; at 6+ the shared DB showed connection pressure and slow queries; at 8 it regressed (~3.4 min) from CPU thrashing + startup amortization loss.',
+      'Per-fork company partitioning: fork.id (system property injected by the build) → disjoint pre-provisioned company ID range. TestCompanyProvider hands each scenario a fresh company from its fork pool; used companies reset nightly.',
+      'Intra-fork isolation: tests run sequentially inside a fork; fresh-company-per-scenario means no cleanup dependency — a crashed test corrupts only a company no other test touches.',
+      'Environment keying: per-fork namespace for flags/config overrides so forks cannot flip each other\u2019s state.',
+      'Test assignment: historical-duration-seeded distribution + dynamic pickup at test-class level, so no fork gets stuck with all the slow classes. [VERIFY exact mechanism]',
+      'Ghost detection: per-scenario count reconciliation (parallel vs sequential) exposed report mismatches → static-analysis tool walked scenario → step definitions → invoked code, flagging scenarios whose entire reachable code was deleted/deprecated; owners confirmed before deletion.',
     ],
     impact: [
-      'Enabled QBO Advanced GA in Australia on December 4.',
-      'Expansion path for ~250K AU subscribers.',
-      'Reduced churn from missing functionality to third-party tools.',
-      'Delivered on Big Bet 5 (disrupt mid-market) and Input Goal 1 (mid-market capabilities).',
+      'CI feedback loop: ~10 min → ~3 min (≈70% reduction) on every run.',
+      '550 ghost scenarios identified and removed with owner sign-off — runtime saved and "suite passed" made meaningful again.',
+      'Flake rate after isolation hardening: <0.2% [VERIFY]; cross-fork data collisions eliminated by construction.',
+      'Second-order: smaller, more frequent commits — engineers stopped batching to amortize CI wait.',
     ],
     killerAnswer:
-      "The hardest part was sequencing correctness across teams. It's easy to enable features, but much harder to guarantee that upgrades, analytics, and accountant workflows all behave correctly on day one in a new market. A single mis-sequenced dependency could silently corrupt data or push customers back to third-party tools — so we treated sequencing and validation as first-class engineering problems.",
+      "Threads share memory; processes don't. For a legacy suite full of statics, forks make cross-test contamination structurally impossible instead of relying on a multi-month thread-safety refactor. The shared DB was handled at the app's own tenancy layer: fork_id → disjoint company range, so two forks physically cannot see each other's data — no locks, no runtime coordination, isolation by construction.",
     grillQuestions: [
-      {
-        q: 'How does this reduce churn instead of just shipping features?',
-        a: 'Mid-market customers were leaving to Xero/MYOB because Advanced lacked native analytics + workflows. Closing those gaps gives them a reason to stay rather than pay for QBO + a third-party tool.',
-      },
-      {
-        q: 'Why launch with no marketing?',
-        a: 'Soft launch reduces support pressure while we confirm product stability under real AU traffic. Marketing is sequenced after the product has earned the trust window.',
-      },
-      {
-        q: 'What would have caused a launch delay?',
-        a: 'Analytics drift, upgrade path failure, or accountant flow ("Add new client") breakage. Each was gated explicitly in the readiness checklist.',
-      },
-      {
-        q: 'What did you personally drive vs participate in?',
-        a: 'I drove dependency sequencing and readiness gates. I personally validated upgrade/downgrade and analytics correctness for our slice. I coordinated feature teams to fix bugs within the Oct 27 cutoff.',
-      },
+      'Why forks over Cucumber thread parallelism?',
+      'Why exactly 4 forks — what happened at 8?',
+      'How did forks avoid colliding on the shared database?',
+      'Inside one fork, how did tests avoid contaminating each other?',
+      'How did you find the 550 ghost scenarios, and how did you know they were safe to delete?',
+      'What if one fork gets all the slow tests?',
     ],
     landmines: [
-      'Do NOT say "I helped with localization/testing" — you owned sequencing, which is leadership.',
-      'Do NOT undersell this as "coordination work" — it was production-readiness engineering for a new market.',
+      "Don't claim you made the suite thread-safe — the whole point is you deliberately avoided that refactor via process isolation.",
+      "Don't say the counts differed because parallel ran extra tests — both modes ran the ghosts; your new instrumentation exposed reporting that had been wrong for years.",
+      'Surefire, Cucumber, and the multi-tenant companyId design are things you stood on — your work was composing them into a safe parallel scheme.',
+      'The 4-vs-6-vs-8 fork numbers and flake percentages are reconstructions — [VERIFY] against your real runs before quoting them.',
     ],
   },
+
 
   {
     id: 'template-sharing',
@@ -418,239 +382,7 @@ I built a modular frontend architecture around a generic Template Handler and Us
     ],
   },
 
-  {
-    id: 'change-orders',
-    tier: 1,
-    year: '2024 — 2025',
-    company: 'Intuit · QuickBooks Online Projects',
-    title: 'Change Orders — Scalable UI + Dynamic Sync Pipelines',
-    role: 'Frontend Architect & Engineer',
-    tags: ['Financial Workflows', 'State Machines', 'Reporting', 'Auditability'],
-    oneLine:
-      'First-class way to track scope changes to a project estimate without rewriting history — accepted change orders roll up into KPIs and reports in real time with full audit traceability.',
-    headline: {
-      users: '50K+ businesses',
-      reduction: '80% fewer manual edits',
-      surface: 'KPIs + 6 reports + visual tracker',
-      contract: 'Original estimate immutable',
-    },
-    narrative: `I led the engineering for Change Orders in QuickBooks Online Projects — essentially a first-class way to track scope changes to a project estimate without rewriting history. Before this, users had to edit or recreate estimates, which broke audit trail and caused reporting inconsistencies.
 
-The key requirement was: keep the original estimate intact, represent changes as separate transactions, and once accepted, have those changes roll up into project estimated cost/income everywhere — project KPIs, reports, and estimates vs actuals — while preserving full audit traceability.
-
-I built a scalable Change Order UI that handled creation, editing, statuses, attachments, and linking to the underlying project estimate. But the harder part was the dynamic sync pipeline: when a change order is accepted or declined, the system updates rollups and reporting in near real time, so users immediately see accurate KPIs and financial totals.`,
-    problem: [
-      'No native "change order" concept — users edited estimates directly, breaking audit history.',
-      'Reporting inconsistencies across project KPIs, Estimates vs Actuals, Work in Progress.',
-      'Construction + professional services workflows specifically needed scope-change tracking.',
-      'Customer signoff flow required separation of original estimate from subsequent changes.',
-    ],
-    architecture: [
-      {
-        name: 'Core Domain Model',
-        detail:
-          'A Change Order is a separate estimate-like transaction linked to a Project Estimate. Only accepted change orders contribute to totals. Original estimate remains immutable for audit.',
-      },
-      {
-        name: 'Creation Constraints',
-        detail:
-          'CO can only originate from a pending / accepted / converted Project Cost Estimate. Not allowed on basic estimates. Disabled for any other PCE status.',
-      },
-      {
-        name: 'Field Rules',
-        detail:
-          'For existing line items: only qty editable. For new line items: all fields editable. Markup, rates, taxable, billable inherited from PCE for existing lines.',
-      },
-      {
-        name: 'Status State Machine',
-        detail:
-          'Pending → Accepted / Declined. Accepted = contributes to totals + shows as non-editable section on PCE. Pending = shows on PCE grayed, does not contribute. Declined = excluded from PCE entirely. Estimate decline cascades to obsolete CO warnings.',
-      },
-      {
-        name: 'Sticky Summary Bar',
-        detail:
-          'Live: total change in estimated cost, total change in estimated income, previous estimated profit margin, new estimated profit margin (assuming this CO is accepted). Updates per line item edit.',
-      },
-      {
-        name: 'Dynamic Rollup Pipeline',
-        detail:
-          'On status transition, recompute and propagate: project estimated cost/income, profit margin, Estimates vs Actuals visual tracker, KPIs, 6 reports (Estimates vs Actuals, EvsA by Project, Work in Progress, Committed Costs, Cost to Complete, Change Order Report). Status-based inclusion rules prevent double counting.',
-      },
-      {
-        name: 'Tax & Discount Interactions',
-        detail:
-          'CO sales tax always calculated using the linked PCE date. Discounts in CO merge to PCE discount when accepted (percent → dollar). Override removed and recalculated on accepted-CO merge. Reverted on decline.',
-      },
-      {
-        name: 'Invoicing Boundaries',
-        detail:
-          'Invoicing is from the estimate (which includes accepted COs), not from the CO directly. Progress invoicing reflects updated estimate amount and remaining. CREATE INVOICE disabled on CO form.',
-      },
-      {
-        name: 'Audit Traceability',
-        detail:
-          'Every edit logged in Audit Log under Change Order section. Restore Version supported. Status changes logged as separate line items in the Change Order Report.',
-      },
-    ],
-    impact: [
-      '80% reduction in manual estimate edits.',
-      'Improved financial accuracy for 50K+ businesses.',
-      'Full audit traceability across CO lifecycle.',
-      'Reporting consistency across 6 project reports.',
-    ],
-    killerAnswer:
-      "The hardest part wasn't a screen — it was making the rollup correct. Pending, accepted, and declined COs have completely different inclusion rules across KPIs, reports, and the project tracker. We modeled this as a status state machine driving a sync pipeline, with explicit guards against double counting. The UI is the easy surface; the correctness of the underlying financial model is what made this real engineering.",
-    grillQuestions: [
-      {
-        q: 'How do you prevent double counting with multiple accepted COs?',
-        a: 'Status-based inclusion rules at the rollup layer. Each CO contributes exactly once on accepted. Recomputation is idempotent — re-running yields the same totals.',
-      },
-      {
-        q: 'What triggers rollup recalculation?',
-        a: 'Status transition events on CO. Reactive pipeline propagates to project totals, KPIs, reports, and visual tracker. Bounded recompute per project, not full table scan.',
-      },
-      {
-        q: 'Accepted CO becomes declined after partial invoicing — what happens?',
-        a: 'Warning surfaced to user about prior invoicing. On confirm, CO lines removed from PCE, EI/EC adjusted, invoice not modified. Audit log records both states. Invoice remains a historical document.',
-      },
-      {
-        q: 'Why can\'t users edit original estimate line attributes through a CO?',
-        a: 'Audit traceability. The original estimate must remain immutable. Edits = new line items or qty adjustments on existing lines via CO, never field rewrites on the original.',
-      },
-      {
-        q: 'How did you guarantee KPIs and reports show the same numbers?',
-        a: 'Single rollup pipeline drives both. KPIs and reports read from the same materialized rollup, not from independent calculations. Eliminates skew.',
-      },
-      {
-        q: 'What\'s the nastiest edge case?',
-        a: 'Accepted CO + override-applied tax on PCE + partial progress invoicing + subsequent CO decline. Order of operations determines whether tax is recalculated or invoice retains stale tax. We pinned the rule: invoice is historical, future estimate reflects current rule.',
-      },
-    ],
-    landmines: [
-      'Do NOT call this "a UI" — it is a financial state machine with sync pipelines.',
-      'Do NOT claim "real-time everywhere" — be precise: near real-time, bounded recompute.',
-    ],
-  },
-
-  {
-    id: 'project-budgets',
-    tier: 1,
-    year: '2025',
-    company: 'Intuit · QuickBooks Online IES',
-    title: 'Project Budgets — Decoupling Internal Cost from Customer Estimates',
-    role: 'Frontend Architect',
-    tags: ['Source-of-Truth Migration', 'Financial Systems', 'Reporting', 'Migration UX'],
-    oneLine:
-      'New source of truth for estimated cost — separated from customer-facing Project Estimates — with safe migration, reporting source switch, and full backward compatibility.',
-    headline: {
-      adoption: '27% of project users',
-      businesses: '37K+ businesses',
-      change: 'Cost SoT moved from PCE → PB',
-      grid: 'DataGrid · 3500+ rows · 23 cols',
-    },
-    narrative: `Before Project Budgets, QuickBooks used Project Estimates as the source of truth for both estimated cost and income. That broke the mental model for mid-market businesses, especially construction and professional services, where internal cost breakdowns are far more granular than customer-facing quotes.
-
-I helped design and launch Project Budgets to decouple these two concerns: Budgets became the source of truth for estimated cost, while Project Estimates remained the source of truth for estimated income.
-
-The hardest part wasn't the UI — it was ensuring this change didn't break reporting, migrations, upgrade paths, or downstream workflows like Change Orders and Invoicing. I worked on the frontend architecture for budget creation, editing, import, and audit visibility, while coordinating closely with reporting and backend teams to safely switch the estimated-cost data source across 8+ critical reports.`,
-    problem: [
-      'PE acted as both customer-facing quote AND internal cost breakdown — wrong mental model for MM.',
-      'Construction tracks 200+ cost codes (AIA billing); customers want short quotes — irreconcilable in one form.',
-      'Reports pulled estimated cost from PE — wrong source for accounting accuracy.',
-      '8+ existing reports, custom reports, memorized reports all depended on PE-as-cost-source.',
-      'Migration scope: existing IES users, Advanced upgraders, Desktop migrators, NTTFs — all different flows.',
-    ],
-    architecture: [
-      {
-        name: 'Source-of-Truth Separation',
-        detail:
-          'PE → estimated income only. PB → estimated cost only. PE and PB exist independently. Multiple PEs per project, exactly one PB per project. Reports switched to PB as cost source.',
-      },
-      {
-        name: 'DataGrid at Scale',
-        detail:
-          'Up to 3500 rows, 23 columns, virtual scroll, <200ms edit latency target. Grouping, milestones, dimensions, classes, locations, custom fields. Closer to an FP&A tool than a form.',
-      },
-      {
-        name: 'Budget State Machine',
-        detail:
-          'Draft → Published → Version N. Draft = not in reports. Published = original baseline for reporting. Versions = subsequent edits, with diff vs original surfaced in reports.',
-      },
-      {
-        name: 'Audit Log Reuse for Versioning',
-        detail:
-          'Reused existing audit log platform for budget versioning. Each edit creates a version; user can view or restore. Cost diff (Original / Diff / Total) reflected as 3 new columns across 5 cost reports.',
-      },
-      {
-        name: 'Migration Pipeline',
-        detail:
-          'Two-step async flow: accept all pending PEs and COs → migrate cost columns from PCE to PB. Triggered by user opt-in (existing IES) or auto (upgraders, NTTFs, DTM). Failure isolation: error in step 1 logged; error in step 2 rolls back to old mode.',
-      },
-      {
-        name: 'Async AI Import',
-        detail:
-          'Spreadsheet upload exceeding 4s SLA — async with task-based progress, notifications, page-level messaging, and resumability. Up to 300 lines supported in V2.',
-      },
-      {
-        name: 'Dual-Mode Reporting',
-        detail:
-          'During rollout, both modes coexist: PB-users see new reports (cost from PB), non-PB-users see old reports (cost from PE). Feature flag + variability options. Cord cut once 100% on PB.',
-      },
-      {
-        name: 'Multicurrency Guardrail',
-        detail:
-          'MC initially blocked (only 0.38% of PCE users use it). Warning on MC toggle with data-loss callout. Phase 2 added MC support after migration pipeline matured.',
-      },
-      {
-        name: 'Downgrade Strategy',
-        detail:
-          'IES → Advanced reverse migration: synthetic PE created carrying budget costs, original PEs unchanged. Reports unbroken. White-glove for edge cases.',
-      },
-    ],
-    impact: [
-      '27% of project users adopted Project Budgets.',
-      'Improved financial accuracy for ~37K businesses.',
-      'Cleaner mental model matching how project managers actually think about cost vs price.',
-      'Closed competitor gaps vs NetSuite, Procore, Knowify on key budgeting features.',
-      'Established async migration UX pattern reused across the platform.',
-    ],
-    killerAnswer:
-      "The hardest part was changing the cost source of truth without breaking trust. Budgets touched reports, estimates, change orders, migrations, and upgrades. The frontend had to make that transition explicit, safe, and reversible for users, while enforcing strict invariants so financial data stayed correct.",
-    grillQuestions: [
-      {
-        q: 'Why decouple budgets from estimates?',
-        a: 'They serve different audiences with different granularity. Internal accounting needs 200+ cost codes; customer quotes need 10 line items. Forcing both into one form broke the mental model and caused reporting drift.',
-      },
-      {
-        q: 'Why one budget per project but multiple PEs?',
-        a: 'One internal source of truth for cost. Multiple customer-facing quotes are normal (negotiation iterations). The constraint matches the domain.',
-      },
-      {
-        q: 'How do PB and CO interact?',
-        a: 'COs no longer carry cost columns (cost lives in PB). CO updates estimate (income). Budget revisions are tracked via the budget versioning system, not via COs.',
-      },
-      {
-        q: 'What was the riskiest migration scenario?',
-        a: 'Existing IES users with pending PEs + COs + memorized custom reports. Migration auto-accepts pending PEs/COs (data preserved, reports may shift). Mitigated with in-product communication, CSM outreach, and rollback to old mode on step-2 failure.',
-      },
-      {
-        q: 'Why is this not just a frontend feature?',
-        a: 'It changed the cost source of truth across 8+ reports, the audit/versioning model, migration pipelines for 5 cohorts (existing IES, Advanced upgraders, Desktop migrators, NTTFs, Plus upgraders), and downstream interactions with Change Orders, Invoicing, and Verticalization. The DataGrid alone is one of the most complex grids in the product.',
-      },
-      {
-        q: 'How did you keep the DataGrid performant at 3500 rows?',
-        a: 'Virtual scroll, debounced cell edits, memoized row rendering, batched state updates. Cell edit SLA <200ms enforced as a perf budget.',
-      },
-      {
-        q: 'What breaks if adoption goes 27% → 70%?',
-        a: 'AI import queue + DataGrid perf on very large budgets. Mitigation: async import scaling, partition-based grid rendering, server-side aggregation for milestone rollups.',
-      },
-    ],
-    landmines: [
-      'Do NOT say "I built a budget UI" — you separated source-of-truth across the financial reporting layer.',
-      'Do NOT skip the migration story — HMs probe migration risk on financial features.',
-    ],
-  },
 
   {
     id: 'consolidated-email',
@@ -1045,6 +777,14 @@ const TIER_LABELS = {
 
 const DEEP_DIVES = {
   'traffic-replay': {
+    firstPrinciplesQA: [
+      { q: "What problem is this actually solving?", a: "Tests only cover the cases someone imagined; real production traffic is the only realistic test surface — but you cannot experiment on customers. Reduced: how do you get production-scale truth without production-scale risk? Answer: capture real traffic, replay it against a parallel stack running the risky change, compare responses, written data, and latency. The customer only ever touches the real service." },
+      { q: "Why must capture live outside the application?", a: "Anything inside the app sits in the customer's critical path — a capture bug adds latency or crashes the app — and couples capture to the app's release cycle. A sidecar is a separate process in the same pod with its own failure domain: if it dies, customers feel nothing. Isolation of failure domains is the design principle." },
+      { q: "Traffic is TLS-encrypted. How do you capture it without weakening security?", a: "GoReplay watches packets; it cannot decrypt and never encrypts or decrypts anything. The Nginx sandwich solves it inside the pod: Nginx terminates TLS (decrypts), GoReplay passively observes the plaintext, a second Nginx re-encrypts before the app. Plaintext exists ONLY within the pod — the trust boundary is the pod boundary, physical rather than policy. On the bus, payloads are additionally IDPS-encrypted." },
+      { q: "How is it guaranteed the replay causes no side effects?", a: "An Envoy egress proxy intercepts every outbound call from the parallel stack; Wiremock fakes the WRITES; reads pass through because they are side-effect-free. The mocking is at the network layer — even buggy application code cannot reach a production write endpoint, because the network path does not exist. Blast radius is zero by construction, not by convention." },
+      { q: "How do you compare written data without diffing a 32TB database?", a: "A relational schema IS a graph: rows are nodes, foreign keys are edges, and one request's writes form a small connected subgraph off one parent record. So: BFS from (tenant_id, parent_record_id) following FKs, each BFS level one SQL query, bounded by a time window and per-workflow table config. Compare the two row-sets normalizing generated IDs and timestamps. Cost proportional to what the request touched — tens of rows, not terabytes." },
+      { q: "Why Kafka, and why does the partition key matter so much?", a: "Requests and responses are captured as separate events but must be paired to know what production answered. Partition key = transaction_id: Kafka sends same-key messages to the same partition, one consumer owns a partition, order is preserved — so a request and its response always meet at the same consumer, in order. Choose the key right and the hard problem disappears." },
+    ],
     framing:
       'The most-probed project at staff level. Architecture is well-documented internally; be ready for chains on capture/security/data-parity/blast-radius. All war-story content below is documented failure modes designed for, not incidents you should claim happened unless you remember them specifically.',
     firstPrinciples: {
@@ -1284,6 +1024,14 @@ const DEEP_DIVES = {
     },
   },
   'cms-migration': {
+    firstPrinciplesQA: [
+      { q: "What is the root problem, in one sentence?", a: "One concept — a project — lives as two records in two services (IPM project, CMS sub-customer) with no shared transaction, and the legacy sync ran two racing code paths that treated timeouts as certain failure — so it manufactured the exact drift it existed to prevent." },
+      { q: "Why is a timeout not a failure?", a: "When a cross-service call times out, three things could be true: the request never arrived (retry safe), the other side did the work and the response was lost (retry double-applies), or it is still processing. You cannot distinguish them — the Two Generals problem. A timeout is an UNKNOWN, not a NO. Treating it as failure and rolling back a call that actually succeeded creates inconsistency in the opposite direction." },
+      { q: "What does reconcile-before-compensate mean, mechanically?", a: "Every write carries a correlation ID (the projectId). After a timeout, read CMS by that ID to establish ground truth. Found and matching → roll FORWARD: the write succeeded despite the timeout, so update local state. Absent → NOW compensate safely. Compensation only ever runs after reconciliation confirms it is needed — never on a guess." },
+      { q: "How do retries avoid creating duplicates?", a: "The correlation ID doubles as an idempotency key: CMS treats a repeated write with the same key as the same operation and returns the original result. Retry becomes safe by contract, not by luck. And compensation is per-operation: failed create → soft-delete the optimistic local record; failed update → revert to prior version; failed inactivate → undelete. Each compensation is itself idempotent and chaos-tested." },
+      { q: "Why synchronous to CMS but asynchronous to downstream?", a: "The user clicking Save needs a deterministic answer NOW — so the IPM→CMS write is synchronous with the reconciliation flow wrapped around it. Downstream systems (STS, ETS, FTS, QBTime) only need to learn that a project changed — they get async domain events via the platform transactional outbox (event written in the same DB transaction as the state change). Honesty: outbox is platform infra — consumed, not built; my slice was the STS consumer and the resiliency POC." },
+      { q: "Why not two-phase commit?", a: "2PC requires every participant to hold locks between prepare and commit. CMS is a shared multi-tenant service used by many teams — it will not hold write locks for one caller. Off the table organizationally, not just technically. What exists instead has a name: an orchestrated saga, with reconciliation gating compensation." },
+    ],
     framing:
       'Distributed-systems project with documented FMEAs. Failure modes below are taken from your FMEA doc — they are scenarios designed for, not necessarily incidents that occurred. Frame as "scenarios our design accounts for" in interviews, not "things that happened."',
     firstPrinciples: {
@@ -1473,553 +1221,14 @@ const DEEP_DIVES = {
       ],
     },
   },
-  'change-orders': {
-    framing:
-      'Financial feature with extensive PRD documentation. All decisions, rules, and edge cases below are from your PRD. The "failure modes designed for" section contains documented risks from your PRD that the design accounts for — NOT incidents you should claim happened unless you recall them.',
-    firstPrinciples: {
-      reduction:
-        'How do you change a signed financial document without changing what was signed?',
-      invariants: [
-        'The original estimate is immutable. Customer signoff applies to a specific state — that state must survive verbatim.',
-        'Money math must be deterministic. Given the same set of accepted COs, the estimate total is always the same number.',
-        'Rejected scope never appears in totals. Pending scope is visible but never counted. Only Accepted counts.',
-        'An issued invoice is a point-in-time record. Later state changes never retroactively rewrite it.',
-        'Tax must reflect current rules on the current scope — an override made against old scope is stale by definition.',
-      ],
-      tensions: [
-        'Auditability (immutable history) ⇄ Usability (users just want to "fix the estimate").',
-        'Single invoice path (correctness) ⇄ User mental model ("I should invoice this CO directly").',
-        'Automatic recalculation (tax correctness) ⇄ User overrides (their explicit intent gets discarded).',
-        'Visibility of pending scope ⇄ Not polluting the committed total.',
-      ],
-      synthesis:
-        'Model the change as a new, separate transaction linked to the immutable original. Derive the effective estimate as original + accepted COs, computed by explicit per-status inclusion rules. Route all invoicing through the estimate so there is exactly one money path. Recalculate tax on every accept because scope changed — the old override answered a question that no longer exists.',
-    },
-    decisions: [
-      {
-        q: 'Change Order as separate transaction vs estimate edit?',
-        options: [
-          'Edit estimate in place: breaks audit trail.',
-          'Separate CO linked to estimate: preserves immutability, clean audit.',
-        ],
-        chosen: 'Separate CO linked to estimate.',
-        why: 'Original estimate must remain immutable for audit + customer signoff. CO is "an additional line" that updates the overall estimate total only when accepted. Audit traceability is non-negotiable.',
-        tradeoff: 'More complex rollup logic (estimate total = original + accepted COs). Worth it for audit + signoff guarantees.',
-      },
-      {
-        q: 'Allow CO to edit any line attribute, or only qty on existing lines?',
-        options: [
-          'Full edit on existing lines: max flexibility, original estimate effectively rewritten.',
-          'Qty-only on existing + full edit on new lines.',
-        ],
-        chosen: 'Qty-only on existing + full edit on new.',
-        why: 'A CO is "an additional line" to the original estimate. Only editable field for existing P/S is qty. New P/S can be added with full attributes. If user needs to change other attributes on existing items, they must edit the original estimate or create a new one.',
-        tradeoff: 'Documented constraint; some users may expect more flexibility. PRD explicit on this rule.',
-      },
-      {
-        q: 'Status-based inclusion rules in totals?',
-        options: [
-          'Implicit: hidden in helpers.',
-          'Explicit per-status: Pending shown but excluded from total, Accepted included, Rejected hidden.',
-        ],
-        chosen: 'Explicit per-status rules.',
-        why: 'Pending CO shows on PCE with a Section header (no P/S lines) — visible but not counted. Accepted CO shows as a non-editable section with P/S details, included in updated estimate total. Rejected CO never shown.',
-        tradeoff: 'More rules to document and test. Required for correct financial behavior.',
-      },
-      {
-        q: 'Invoice from CO directly or only from PCE?',
-        options: [
-          'Allow from CO: two invoice paths.',
-          'Only from PCE: single invoice path; PCE total reflects accepted COs.',
-        ],
-        chosen: 'Only from PCE. Create Invoice CTA disabled on CO form.',
-        why: 'An invoice can only ever be created from an Estimate. The Estimate already includes accepted COs in its updated total. Single invoice path eliminates double-billing risk and ambiguity.',
-        tradeoff: 'Users initially confused. PRD documents this explicitly; CTA disabled to prevent the action.',
-      },
-      {
-        q: 'Sales tax recalculation on CO accept — preserve PCE override or recalculate?',
-        options: [
-          'Preserve PCE tax override.',
-          'Recalculate on accept; remove PCE tax override.',
-        ],
-        chosen: 'Recalculate, remove override.',
-        why: 'PRD rule: "Every time change order line items are added back to a project estimate, and that project estimate sales tax had an override, the override will be removed and the sales tax will calculate based on automatic sales tax calculation." Tax must reflect updated scope to comply with sales tax rules.',
-        tradeoff: 'User tax override is lost. Documented behavior.',
-      },
-      {
-        q: 'Discount on CO — support or defer?',
-        options: [
-          'Support in Phase 1: complex merge rules with PCE discount.',
-          'Phase 1: no discount on CO. Phase 2: support.',
-        ],
-        chosen: 'No discount on CO in Phase 1.',
-        why: 'When a CO without discount is added to a PCE with a % discount, the % continues to apply. Reduces Phase 1 complexity; Phase 2 adds support.',
-        tradeoff: 'Limited Phase 1 functionality on discounts. Documented.',
-      },
-    ],
-    algorithms: [
-      {
-        name: 'Status-based rollup with explicit inclusion rules',
-        description:
-          'CO total counted in PCE updated total only when status = Accepted. Pending: shown on PCE with Section header, no P/S items, no total impact. Rejected: never shown. On accept, CO lines added to PCE; on reject (from accepted), lines removed and PCE recalculates.',
-        complexity: 'O(accepted COs × lines) per recomputation.',
-        why: 'Independent calculation paths would drift. Single rollup logic feeding all surfaces (PCE display, reports, KPIs) prevents double-counting and inconsistency.',
-      },
-      {
-        name: 'Discount % → $ merge rules on CO accept',
-        description:
-          'PCE % discount: stays as %, applies to new total including accepted CO lines. PCE $ discount: combine with CO discount if any. If CO subsequently rejected after merge, remove associated discount amount.',
-        complexity: 'O(1) per merge.',
-        why: 'Discount semantics differ between % and $ representations. Merge rules documented per combination.',
-      },
-      {
-        name: 'Sales tax recalculation pipeline',
-        description:
-          'On CO accept: tax recalculated against linked PCE date and current rates. If PCE tax had an override, override removed. If tax rates changed between PCE creation and CO creation, PCE line items also recomputed at new rates during the merge. Tax exemption on linked customer is always respected.',
-        complexity: 'O(line items) per recompute.',
-        why: 'Tax compliance requires accurate calculation against current rates and updated scope. Override removal is the documented contract.',
-      },
-    ],
-    numbers: [
-      { metric: 'Manual estimate edit reduction', value: '80%', note: 'Per resume claim.' },
-      { metric: 'Businesses impacted', value: '50K+', note: 'QBO Alpha rollout.' },
-      { metric: 'Markets', value: 'US, Canada, AU, UK', note: 'Global readiness dependent on TXP availability; currently only works for US.' },
-      { metric: 'Target segment', value: 'Mid-market', note: 'Focus on construction and professional services.' },
-      { metric: 'Status values', value: '3 (Pending / Accepted / Rejected)', note: 'Plus inclusion rules per status.' },
-      { metric: 'New reports', value: 'Change Order Report + columns in existing reports', note: 'CO by Project, CO by Status, CO by E vs A.' },
-    ],
-    warStories: [
-      {
-        scenario: 'Pending CO must show on PCE but not affect total',
-        whatHappened:
-          'Documented requirement: pending COs are visible to the user (so they know what is in flight) but cannot affect the PCE total (which only reflects accepted scope).',
-        howResolved:
-          'PCE renders pending COs with a Section header and no P/S line items. Updated estimate total excludes pending. Documented and tested per status.',
-        lesson:
-          'Visibility and totaling are independent concerns in financial UI. Make rules explicit per status.',
-      },
-      {
-        scenario: 'Accepted CO subsequently rejected after partial invoicing',
-        whatHappened:
-          'Documented scenario: user accepts a CO, partially invoices it (since invoicing flows through PCE which now includes the accepted CO), then rejects the CO.',
-        howResolved:
-          'Per PRD: rejecting an accepted CO removes its lines from the PCE going forward. The invoice already issued remains historical and unchanged. PCE total recalculates without the rejected CO.',
-        lesson:
-          'Invoices are point-in-time financial documents. State changes on the source (estimate/CO) do not retroactively alter issued invoices.',
-      },
-      {
-        scenario: 'PCE tax override invalidated by CO accept',
-        whatHappened:
-          'Documented behavior: if PCE has a tax override (custom rate due to specific contract), accepting a CO recalculates tax against current rates — removing the override.',
-        howResolved:
-          'PRD documents this as the contract: "the override will be removed and the sales tax will calculate based on automatic sales tax calculation." User-facing communication required to explain the rule.',
-        lesson:
-          'Tax rules must be deterministic and rule-driven. Overrides represent a moment-in-time decision that becomes stale when scope changes.',
-      },
-      {
-        scenario: 'Discount % conversion on CO merge',
-        whatHappened:
-          'PRD: when CO with no discount is merged into PCE with % discount, the % continues to apply to the new total. When the combination involves a $ discount on either side, conversion rules apply: % → $ for combining; on rejection, remove the associated amount.',
-        howResolved:
-          'Merge rules documented per combination (%/%, %/$, $/%, $/$). On CO reject after merge, associated discount amount removed from PCE.',
-        lesson:
-          'Discount semantics differ between % and $ representations. Merge rules must cover every combination explicitly.',
-      },
-    ],
-    edgeCases: [
-      { case: 'Multiple pending COs on the same PCE', handling: 'All visible as grayed sections on PCE. None counted in updated total. User accepts/rejects each individually. No restriction on count.' },
-      { case: 'No accepted, pending, or converted PCE exists', handling: 'CO cannot be created. User prompted to create a Project Estimate first.' },
-      { case: 'Tax-exempt customer linked to project', handling: 'Tax exemption respected throughout. CO line items inherit taxable flag from PCE.' },
-      { case: 'CO accepted then rejected after partial invoicing', handling: 'CO lines removed from PCE going forward. Issued invoice unchanged (historical). PCE total recalculates without the CO.' },
-      { case: 'Tax rate changes between PCE and CO creation', handling: 'On CO accept merge, PCE line items recomputed at new tax rate. CO sales tax always calculated based on linked PCE date.' },
-      { case: 'Shipping amount on CO', handling: 'Added back to PCE shipping field on accept. Removed if CO subsequently rejected.' },
-      { case: 'Negative CO total in Phase 1', handling: 'Total of CO must be >= $0. Individual line items can be negative as long as total is non-negative. Phase 2: full negative support for refund-style COs.' },
-    ],
-    whatIWouldChange:
-      'Retrospective opinion only. Examples to consider: building the rollup pipeline first then UI; deeper versioning for accepted CO state; surfacing tax override warning earlier in CO creation. Mark as your view, not source-documented.',
-    chains: [
-      {
-        title: 'The CO lifecycle chain',
-        steps: [
-          { q: 'What happens when a CO is created?', a: 'Linked to a Pending, Accepted, or Converted PCE. Status starts as Pending. Shown on PCE as Section header without P/S lines. Not counted in updated estimate total.' },
-          { q: 'On accept?', a: 'CO added to PCE as a non-editable section with P/S line item details. Total recalculates. Tax recalculates (removing any override). Discount and shipping merged per documented rules.' },
-          { q: 'On reject from accepted?', a: 'CO lines removed from PCE going forward. PCE total recalculates. Associated discount, tax, shipping amounts removed.' },
-          { q: 'What about issued invoices?', a: 'Invoices are point-in-time. They remain historical and unchanged regardless of subsequent CO state changes.' },
-        ],
-      },
-      {
-        title: 'The invoicing chain',
-        steps: [
-          { q: 'Can a user invoice directly from a CO?', a: 'No. Create Invoice CTA is disabled on CO form. Invoice can only be created from an Estimate.' },
-          { q: 'Why?', a: 'PCE total already reflects accepted COs. Single invoice path eliminates double-billing risk.' },
-          { q: 'What if the user has progress-invoiced and then accepts a CO?', a: 'The PCE total updates to include the CO. The next progress invoice shows the updated total minus what has been invoiced. The previously-issued invoice does not retroactively update.' },
-          { q: 'Does the issued invoice get an updated total stamp?', a: 'No. Invoice is point-in-time. PRD: "the invoice I previously sent will have an incorrect estimate total on it as it won\'t include the newly accepted change order." That is the documented behavior.' },
-        ],
-      },
-      {
-        title: 'The tax & discount chain',
-        steps: [
-          { q: 'How is sales tax handled on accept?', a: 'Recalculated against linked PCE date and current rates. If PCE had a tax override, override is removed. If rates changed between PCE creation and CO, PCE line items also recomputed.' },
-          { q: 'What about tax-exempt customers?', a: 'Exemption is always respected. CO line items inherit the taxable flag from PCE.' },
-          { q: 'How are discounts merged?', a: 'Rules documented per combination. Most common in Phase 1: PCE has % discount, CO has none → % continues to apply to new total. On CO reject after merge, associated discount amount removed.' },
-        ],
-      },
-    ],
-    followUps: {
-      firstPrinciples: [
-        { q: 'Why not just let users edit the estimate? Simpler for everyone.', a: 'The estimate is a signed document — the customer accepted a specific state. Editing in place destroys the audit trail and the record of what was agreed. The CO preserves the signed state while representing the delta.' },
-        { q: 'Why is the estimate total derived rather than stored?', a: 'A stored total drifts the moment any contributing CO changes state. Deriving it from original + accepted COs with explicit inclusion rules makes double-counting structurally impossible and the number always reproducible.' },
-        { q: 'Why does a rejected CO vanish from the estimate but stay in reports?', a: 'The estimate shows committed scope — rejected scope would mislead the customer. Reports serve audit — rejected COs remain queryable there. Two different questions, two different surfaces.' },
-      ],
-      productReasoning: [
-        { q: 'Why qty-only editing on existing lines? Users want to change rates too.', a: 'A CO documents what changed about scope. Rate changes are a renegotiation, not a scope change — that is a new estimate. Keeping COs narrow keeps the audit narrative clean: existing items got more/less, new items were added.' },
-        { q: 'Why disable Create Invoice on the CO form?', a: 'Two invoice paths means double-billing risk. The estimate total already includes accepted COs, so invoicing from the estimate covers everything exactly once. One money path, zero ambiguity.' },
-        { q: 'What happens to a customer who already partially invoiced when a CO is accepted?', a: 'The estimate total updates. The next progress invoice shows updated-total minus already-invoiced. The issued invoice stays as-is — it is a historical document.' },
-        { q: 'Why remove the tax override on accept instead of preserving it?', a: 'The override answered "what tax on THAT scope." Scope changed. Preserving a stale override risks legally wrong tax. Recalculation against current rates and scope is the only defensible default.' },
-      ],
-      correctness: [
-        { q: 'How do you prevent double counting with multiple accepted COs?', a: 'The rollup sums each accepted CO exactly once from explicit status rules. Recomputation is idempotent — re-running on the same state always gives the same total.' },
-        { q: 'What if a CO is accepted while another is being edited?', a: 'Each CO transitions independently. The estimate recomputes on each accept. The bottom summary on any open CO always shows all other accepted COs, so the user sees the true total context.' },
-        { q: 'How is auditability actually achieved?', a: 'Every transition is a recorded event on a separate transaction entity. The original estimate never mutates. The full history — what changed, when, what status — is reconstructible.' },
-      ],
-      scale: [
-        { q: 'What happens with a project that has 50 change orders?', a: 'Rollup is O(accepted COs × lines) — linear and bounded. The estimate form renders accepted COs as collapsed sections. Reporting aggregates per status without loading full line detail.' },
-      ],
-      operational: [
-        { q: 'What would you monitor in production to catch rollup inconsistencies?', a: 'A consistency check comparing derived estimate totals against what reports/KPIs display, alerting on divergence. Plus metrics on status-transition volume and recompute latency.' },
-        { q: 'How do you back the 80% fewer manual edits claim?', a: 'Pre-launch, scope changes required editing/recreating estimates — measurable as estimate-edit events. Post-launch, those became CO creations. The comparison of edit volume gives the reduction.' },
-      ],
-      career: [
-        { q: 'What is the transferable design lesson?', a: 'For financial documents: never mutate signed state; append deltas and derive the effective value with explicit rules. Immutability plus derivation beats in-place mutation everywhere money is involved.' },
-        { q: 'Hardest part of this project honestly?', a: 'Not the code — the rule matrix. Tax, discount, shipping, status, invoicing each interact. Getting the PRD to a place where every combination had a documented answer was the real work.' },
-      ],
-    },
-  },
-  'project-budgets': {
-    framing:
-      'Source-of-truth migration with documented constraint set (1444+ memorized reports, multiple cohorts, downgrade paths). All decisions and constraints below are from your PRD. Failure modes section reflects documented requirements, not historical incidents.',
-    firstPrinciples: {
-      reduction:
-        'One form was answering two different questions for two different audiences — split it without breaking anyone.',
-      invariants: [
-        'Cost has exactly one source of truth per project. Two cost sources means reports become ambiguous.',
-        'Existing reports, memorized reports, and custom reports must not break. 1444+ memorized reports carry user expectations.',
-        'Internal granularity (cost-code level) and customer-facing granularity (quote level) are different by nature — one form cannot serve both.',
-        'Migration must be deterministic per cohort. A tenant can never be left half-migrated.',
-        'Downgrade paths preserve user data. Subscription changes never delete budgets.',
-      ],
-      tensions: [
-        'Clean split (PB = cost, PE = income) ⇄ Migration burden for users whose costs live in PEs today.',
-        'Single budget per project (unambiguous truth) ⇄ Power users wanting versions and variants.',
-        'AI-assisted import (speed) ⇄ Financial accuracy (wrong P/S match = miscategorized money).',
-        'Uniform migration (simple) ⇄ Cohort reality (NTTFs, Desktop migrators, Upgraders, Existing IES all start from different states).',
-      ],
-      synthesis:
-        'Decouple by audience: PB becomes the singular internal cost source; PE stays the customer-facing income document. Enforce 1 PB : N PEs so cost truth is never ambiguous while quotes can iterate. Migrate cohort-by-cohort because starting states differ. Keep humans in the loop on AI import because financial categorization errors are silent and expensive. Protect the report long tail explicitly — it is where user trust actually lives.',
-    },
-    decisions: [
-      {
-        q: 'Decouple Project Budgets from Project Estimates entirely?',
-        options: [
-          'Keep PE as combined cost + income source: matches today, conflates audiences.',
-          'Split: PB = cost source (internal accountant view), PE = income source (customer-facing quote).',
-        ],
-        chosen: 'Split.',
-        why: 'Project managers need two views: internal accountant-facing (cost breakdown) and external customer-facing (estimates/quotes). PB is granular (cost-code level); PE is high-level. Up to 80% of users use spreadsheets for budgeting today; PB replaces that.',
-        tradeoff: 'Two entities to maintain, migration complexity for existing users. Documented as necessary for the financial model.',
-      },
-      {
-        q: 'One budget per project, or multiple?',
-        options: [
-          'Multiple budgets per project: max flexibility, ambiguous source of truth.',
-          'One budget per project: clear source of truth.',
-        ],
-        chosen: 'One per project.',
-        why: 'PRD: "Don\'t allow creation of multiple budgets against 1 project. Show an error message if the user attempts to do so." Single internal cost source. Multiple PEs allowed (negotiation iterations), but cost source must be singular.',
-        tradeoff: 'Documented constraint; advanced users requesting versioning addressed via budget revisions, not multiple budgets.',
-      },
-      {
-        q: 'PB and PE coexistence — independent or coupled?',
-        options: [
-          'Coupled: changes in one trigger the other.',
-          'Independent: PE can exist without PB and vice versa. Updates are user-driven.',
-        ],
-        chosen: 'Independent (V1).',
-        why: 'PRD: "PE can exist without PB and PB without PE. Their existence is not tied to the presence of each other. The decision to update PE / PB when the other is updated is taken by the user in V1."',
-        tradeoff: 'User must manually keep them aligned. V2 considers automation.',
-      },
-      {
-        q: 'DataGrid — build custom or extend FP&A component?',
-        options: [
-          'Build custom: full control, time cost.',
-          'Reuse FP&A DataGrid: faster, already supports virtual scroll and cell editing.',
-        ],
-        chosen: 'Reuse + extend.',
-        why: 'FP&A DataGrid already supports P&L and B/S budgets. Reusing aligns UX across budget types. Virtual scroll added to support 3500 lines with milestones (V2). Cell edit SLA target: <0.2s for 23 cols × 3500 lines.',
-        tradeoff: 'Coordination with FP&A team for extension points. Worthwhile vs building from scratch.',
-      },
-      {
-        q: 'AI-based spreadsheet import or manual mapping only?',
-        options: [
-          'Manual mapping: user maps every column.',
-          'AI-based import with user confirmation per row.',
-        ],
-        chosen: 'AI import with user confirmation.',
-        why: 'PRD documents AI-based spreadsheet import as a differentiator. Per-row confirmation keeps human-in-the-loop for financial accuracy.',
-        tradeoff: 'AI matching can suggest wrong P/S items. User confirmation step required, not optional.',
-      },
-      {
-        q: 'Migration paths — uniform or cohort-specific?',
-        options: [
-          'Uniform auto-migration for all.',
-          'Cohort-specific: NTTFs, Desktop Migrators (Fresh + Importer), Advanced→IES Upgraders, Existing IES users.',
-        ],
-        chosen: 'Cohort-specific.',
-        why: 'Documented cohorts have different starting states. NTTFs have no history. Desktop Migrators split into Fresh Start (no migration) and Importer (PCE cost migrated). Advanced→IES Upgraders sign contract covering migration. Existing IES users have history + memorized reports to consider.',
-        tradeoff: 'Multiple migration paths to build and maintain. Necessary because cohorts have meaningfully different state.',
-      },
-    ],
-    algorithms: [
-      {
-        name: 'DataGrid virtual scroll',
-        description:
-          'Replace paginated view with virtual scroll supporting up to 3500 lines for milestone-driven budgets in V2. Cell edit SLA target <0.2s for 23 columns × 3500 lines.',
-        complexity: 'O(viewport) DOM render.',
-        why: 'Milestone view requires all data of 1 milestone on the same page. Pagination breaks the experience. Virtual scroll keeps DOM bounded regardless of total row count.',
-      },
-      {
-        name: 'Cohort-driven migration pipeline',
-        description:
-          'Two-step migration: (1) accept all pending PEs/COs, (2) migrate cost columns PCE → PB. Each cohort has documented entry criteria. On-demand migration for cohorts that need user opt-in.',
-        complexity: 'O(PEs + COs + lines) per tenant.',
-        why: 'Documented constraint: "Existing reports, memorized reports, custom reports must not break." Migration must be deterministic and reversible per cohort policy.',
-      },
-      {
-        name: 'Dimension/Class/Location/Custom field migration per line item',
-        description:
-          'When user triggers migration, PCE line-item-level metadata (dimension, class, location, custom field values) migrates over to PB line by line. Header-level values apply uniformly to all PB lines.',
-        complexity: 'O(line items × metadata fields).',
-        why: 'PB must maintain feature parity with PE for filtering and reporting. Reports filter by dimension/class/location/custom field — PB must support all of them.',
-      },
-    ],
-    numbers: [
-      { metric: 'Adoption rate', value: '27%', note: '31% of active project users create PE × 86% of those include costs = 27% adoption of PB.' },
-      { metric: 'Businesses impacted', value: '37K+', note: 'Active IES users with project workflows. 43% IES SAM, accounting for 11% of all IES users.' },
-      { metric: 'DataGrid scale (V2)', value: '3500 rows × 23 cols', note: 'Performance target documented in V2 enhancements.' },
-      { metric: 'Cell edit SLA', value: '<0.2s', note: 'Documented perf budget for DataGrid.' },
-      { metric: 'Memorized reports impacted', value: '1444+', note: 'Across 8 affected reports.' },
-      { metric: 'Spreadsheet baseline', value: '~80% of users', note: 'Use spreadsheets for project budgeting today. PB targets this workflow.' },
-    ],
-    warStories: [
-      {
-        scenario: 'Memorized + custom reports must not break',
-        whatHappened:
-          'Documented constraint: 1444+ memorized reports across 8 affected reports carry user expectations. Splitting cost source from PE to PB means cost columns on existing custom reports could go blank silently.',
-        howResolved:
-          'Per requirement: existing reports, memorized reports, and custom reports must not break. Cohort-driven migration with explicit handling for custom reports referencing PE-based cost columns.',
-        lesson:
-          'Long tail of memorized/custom reports must be planned for explicitly. Silent column-blank is not acceptable for financial reports.',
-      },
-      {
-        scenario: 'Multiple PEs on one project, single PB constraint',
-        whatHappened:
-          'PRD allows multiple project estimates per project (negotiation iterations) but allows only one budget. Risk: ambiguity about which PE the budget aligns to.',
-        howResolved:
-          'PB is the singular internal cost source. PEs are customer-facing quotes; income aggregates across PEs. Cost flows from PB only. Documented as the financial model: 1 PB : N PEs.',
-        lesson:
-          'Source-of-truth correctness is non-negotiable for financial reporting. One PB per project keeps the model unambiguous.',
-      },
-      {
-        scenario: 'AI-based spreadsheet import false matches',
-        whatHappened:
-          'Documented design risk: AI matching of imported spreadsheet rows to existing P/S catalog can suggest wrong items for similarly-named entries — different income accounts, different categorization.',
-        howResolved:
-          'AI import requires per-row user confirmation. "Create new" option always available. User cannot bypass confirmation. Financial accuracy prioritized over automation convenience.',
-        lesson:
-          'AI matching for financial data must be human-in-the-loop. Automation without confirmation = silent miscategorization = audit headaches.',
-      },
-      {
-        scenario: 'Downgrade IES → Advanced preserving budget data',
-        whatHappened:
-          'Documented requirement: "Adv → IES migration and IES → Advanced reverse-migration experiences will be seamless as project budgets exist in both products."',
-        howResolved:
-          'Project budgets exist in both products. Migration path documented per cohort including reverse-migration for downgrades.',
-        lesson:
-          'Subscription downgrade paths must preserve user data, not delete it. Cross-product feature parity is the enabling design.',
-      },
-    ],
-    edgeCases: [
-      { case: 'Project with no PE but has PB', handling: 'Allowed by design. Reports show estimated cost from PB; income blank. PE can be added later.' },
-      { case: 'PB deleted while reports exist', handling: 'Reports show blank Estimated Cost. PE/EI unchanged. Soft-delete with warning.' },
-      { case: 'Multiple PEs on same project, one PB', handling: 'PB unchanged. Reports aggregate income across PEs; cost from single PB. Documented as 1 PB : N PEs.' },
-      { case: 'Construction cost codes with hierarchy', handling: 'P/S hierarchy preserved in budget structure (e.g., 101 Painting → 101.1 Painting floor, 101.2 Painting ceiling). One level of grouping in MVP. Custom groupings (visual sections) supported.' },
-      { case: 'Budget period changed', handling: 'Period editable post-creation. Does not modify project start/end dates (common because projects often run over schedule).' },
-      { case: 'Dimension / Class / Location / Custom field migration', handling: 'Line-item-level values migrate line by line. Header-level values apply uniformly to all PB lines. All filterable in Estimate vs Actual and other reports.' },
-      { case: 'Budget templates', handling: 'MVP: "duplicate" or "copy" only. Users copy existing budget and edit. Note: duplicate exists for P&L/B/S in Advanced; enabled only in IES for project budgets in MVP.' },
-      { case: 'Budget comments', handling: 'Row-level comments supported (extension of existing P&L/B/S comment feature). Cell-level deferred. Manual tracking via comments until full versioning ships.' },
-    ],
-    whatIWouldChange:
-      'Retrospective opinion only. Possibilities: build full budget versioning system earlier instead of relying on comments; build dual-mode reporting observability from day one; deeper AI confidence-banding for import. Verify before claiming as fact.',
-    chains: [
-      {
-        title: 'The source-of-truth chain',
-        steps: [
-          { q: 'Why decouple PB from PE?', a: 'Two audiences: internal accountant (granular cost-code level) vs customer (high-level quote). PE conflated them. PB is the singular internal cost source; PE remains the income/quote document.' },
-          { q: 'Why one PB per project but multiple PEs?', a: 'Cost source must be singular for unambiguous reporting. Income iterates through negotiation — multiple PEs reflect that. 1 PB : N PEs.' },
-          { q: 'How do reports know to use PB or PE for cost?', a: 'PB is the source of truth for Estimated cost in all reports. PE no longer carries cost columns (your rate / your total removed in PE).' },
-        ],
-      },
-      {
-        title: 'The migration cohorts chain',
-        steps: [
-          { q: 'How many migration paths?', a: 'NTTFs, Desktop Migrators (Fresh Start + Importer), Advanced→IES Upgraders, Existing IES users.' },
-          { q: 'Why cohort-specific?', a: 'Each cohort has different starting state. NTTFs no history. Importers bring PCE cost data. Upgraders signed contract covering migration. Existing IES have memorized reports + workflow expectations.' },
-          { q: 'How are memorized reports protected?', a: 'Documented constraint: existing reports, memorized reports, custom reports must not break. 1444+ memorized reports across 8 affected reports are explicitly considered in migration planning.' },
-          { q: 'Downgrade path?', a: 'IES → Advanced reverse-migration seamless because project budgets exist in both products.' },
-        ],
-      },
-      {
-        title: 'The DataGrid perf chain',
-        steps: [
-          { q: 'How does the budget UI handle 3500 lines?', a: 'V2 introduces virtual scroll replacing the paginated view to support milestones with all data on one page. Cell edit SLA target <0.2s for 23 columns × 3500 lines.' },
-          { q: 'Why pagination didn\'t work?', a: 'Milestones require all data of one milestone on the same page. Pagination broke the user experience for that flow.' },
-          { q: 'What FP&A component is reused?', a: 'The DataGrid used for P&L and B/S budgets. Reuse aligns UX across budget types.' },
-        ],
-      },
-    ],
-    followUps: {
-      firstPrinciples: [
-        { q: 'Why is decoupling cost from income the right cut? Why not decouple by role or by report?', a: 'Because the underlying entities answer different questions for different audiences: PB answers "what will this cost us internally" at cost-code granularity; PE answers "what do we quote the customer" at line-item granularity. The audience split is the natural seam — role or report splits would leave one form still conflating both.' },
-        { q: 'Why exactly one budget per project? Versioning solves the same need.', a: 'Reports need an unambiguous cost source. Multiple budgets means every report must answer "which budget?" Budget revisions handle iteration within the single source; multiple sources would push ambiguity into every downstream consumer.' },
-        { q: 'Why can PB and PE exist independently in V1 instead of syncing automatically?', a: 'Auto-sync requires deciding whose edit wins on conflict — a hard product question. V1 makes the user the arbiter: they decide when to propagate changes. Automation can come later once real usage shows what users actually want synced.' },
-      ],
-      productReasoning: [
-        { q: 'Why does ~80% of your target market use spreadsheets today, and what does that tell you?', a: 'Spreadsheets are flexible, granular, and free-form — everything the old PE form was not for internal costing. It tells us the product gap was granularity + internal-facing workflow, which is exactly what PB provides, plus what spreadsheets cannot: report integration and single source of truth.' },
-        { q: 'Why per-row confirmation on AI import instead of full automation?', a: 'A wrong P/S match silently miscategorizes money into the wrong income account. The failure is invisible until an audit. Human confirmation per row converts a silent failure into a visible decision. Financial accuracy beats import speed.' },
-        { q: 'Why support cost-code hierarchies (101 → 101.1, 101.2) in MVP?', a: 'Construction — the core segment — organizes all costing this way. Without hierarchy the budget cannot mirror how these businesses actually think, and they stay in spreadsheets.' },
-      ],
-      correctness: [
-        { q: 'How do 1444+ memorized reports survive the source-of-truth switch?', a: 'Documented as a hard constraint: existing, memorized, and custom reports must not break. Migration planning explicitly enumerates the 8 affected reports and handles cost columns sourced from PE so nothing silently goes blank.' },
-        { q: 'How does line-level metadata survive migration?', a: 'Dimensions, class, location migrate line-by-line from PCE to PB. Header-level custom fields apply uniformly to all lines. All remain filterable in Estimate vs Actual and other reports.' },
-        { q: 'What prevents double counting between PB and PE in reports?', a: 'Cost columns were removed from PE ("your rate"/"your total"). PB is the only cost source; PE only carries income. Structural separation, not convention.' },
-      ],
-      scale: [
-        { q: 'Why is <0.2s cell-edit SLA hard at 3500 rows × 23 columns?', a: 'Naive React re-renders the grid per keystroke — 80K+ cells. Virtual scroll bounds the DOM to the viewport, and edit state isolation keeps a cell edit from cascading. The SLA forces those disciplines.' },
-        { q: 'What breaks first at 10× the row count?', a: 'Client-side aggregation for group totals. The move would be server-side materialized rollups with the grid consuming aggregates.' },
-      ],
-      operational: [
-        { q: 'How do you measure the 27% adoption claim?', a: 'It is a derived projection from documented behavior: 31% of active project users create PEs, 86% of those include costs — the budgeting behavior. 31% × 86% = 27% of the 37K active project users.' },
-        { q: 'What would you monitor post-launch?', a: 'Migration completion per cohort, report-render errors on the 8 affected reports, AI-import confirmation vs correction rates, and cell-edit latency percentiles against the 0.2s SLA.' },
-      ],
-      career: [
-        { q: 'What is the transferable lesson?', a: 'Source-of-truth migrations are constraint-management problems, not feature problems. The feature took a fraction of the thought; protecting the report long tail and sequencing cohorts was the actual engineering.' },
-        { q: 'What was genuinely hard here?', a: 'Four cohorts with different starting states, a downgrade path that must preserve data, and 1444 memorized reports that must not notice anything changed — all while shipping a new editing surface with a strict perf SLA.' },
-      ],
-    },
-  },
-  'au-launch': {
-    framing:
-      'Cross-team execution at market scale. Probed on coordination, risk surfacing, and leadership without authority. Be specific about what you owned vs participated in. Stripped of fabricated bug stories from earlier draft.',
-    firstPrinciples: {
-      reduction:
-        'Ten teams, one launch date, zero authority over nine of them — how do you make the date without being anyone\'s boss?',
-      invariants: [
-        'First impression in a new market is unrecoverable. Xero and MYOB own AU mindshare; a broken launch confirms the incumbent choice.',
-        'Upgrade/downgrade paths must never corrupt data or lock a customer in. Money software with a broken upgrade is a trust-ending event.',
-        'Analytics must be correct at GA. Wrong dashboards in a finance product are indistinguishable from a broken product.',
-        'Every dependent team\'s readiness must be independently verifiable — "we think we\'re ready" is not a gate.',
-      ],
-      tensions: [
-        'Launch scope (full parity impresses) ⇄ Launch risk (every feature is another failure surface).',
-        'Marketing push (adoption velocity) ⇄ Validation window (real traffic before scale).',
-        'Central coordination (consistency) ⇄ Team autonomy (10+ teams own their own gates).',
-        'Hard deadline (Dec 4) ⇄ Descope discipline (cut features, never cut safety).',
-      ],
-      synthesis:
-        'Convert authority you don\'t have into structure everyone agrees to: a per-team readiness gate with an explicit cutoff (Oct 27), a dependency graph that makes sequencing objective, and a triage cadence that surfaces blockers daily. Launch soft — no marketing — so real AU traffic validates the product before scale amplifies any mistake. Gate hardest on the two irreversible things: upgrade safety and analytics correctness.',
-    },
-    decisions: [
-      {
-        q: 'Why launch with no marketing?',
-        options: [
-          'Full marketing launch: max influx, max risk if anything breaks.',
-          'Soft launch: smaller cohort, lower support pressure, time to validate.',
-        ],
-        chosen: 'Soft launch.',
-        why: 'New market with established competitors (Xero, MYOB). First impression matters. Soft launch lets product stability validate under real AU traffic before scaling marketing. Marketing follows confidence.',
-        tradeoff: 'Slower initial adoption. Acceptable: a botched launch in a competitive market is worse than slower ramp.',
-      },
-      {
-        q: 'Feature scope for GA — full Advanced parity or pragmatic subset?',
-        options: [
-          'All Advanced features at GA: maximum parity.',
-          'Core + safe upgrade/downgrade + analytics correctness.',
-        ],
-        chosen: 'Core + upgrade safety + analytics.',
-        why: 'Upgrade/downgrade safety non-negotiable for mid-market customers. Analytics correctness critical for the target segment. Other features follow post-GA.',
-        tradeoff: 'Some feature gaps at GA. Documented in known-issues. Roadmap visible to early adopters.',
-      },
-    ],
-    algorithms: [
-      {
-        name: 'Cross-team readiness gating',
-        description:
-          'Each of 10+ dependent teams owns a feature gate. Pre-Oct-27 cutoff: all gates green or features descoped. Daily readiness sync. Issue triage with severity tiers. No GA until P0/P1 gates green.',
-        complexity: 'O(features × teams) coordination surface.',
-        why: 'Mis-sequenced enablement risks silent data corruption or upgrade lock. Explicit per-team gating prevents "it works on my machine" surprises.',
-      },
-    ],
-    numbers: [
-      { metric: 'Dependent teams', value: '10+', note: 'Analytics, workflows, upgrade/downgrade, accountant flows, currency, locale, prod offers, experts.' },
-      { metric: 'AU subscriber base', value: '~250K', note: 'Pre-launch QBO subscriber count. Strong upgrade opportunity to Advanced.' },
-      { metric: 'Launch date', value: 'December 4', note: 'GA with no active marketing.' },
-      { metric: 'Pre-prod cutoff', value: 'October 27', note: 'All feature gates green or descoped by this date.' },
-      { metric: 'Target segment', value: 'Mid-market', note: 'Construction and professional services emphasis.' },
-    ],
-    edgeCases: [
-      { case: 'AU-only feature dependency timing', handling: 'Sequenced after global-feature enablement. If global delayed, AU launch path adjusted (descope or wait). Explicit dependency graph.' },
-      { case: 'Mid-market customer with existing third-party tools', handling: 'Migration path documented. Not gating for GA — migration support is post-GA work.' },
-      { case: 'Upgrade matrix coverage', handling: 'Every cohort path (Simple Start, Essentials, Plus → Advanced AU) tested. Soft-blocker conditions in legacy AU configs validated.' },
-    ],
-    whatIWouldChange:
-      'Retrospective opinion only. Possibility: build AU test data set in parallel with feature work, not after. Verify before claiming.',
-    chains: [
-      {
-        title: 'The cross-team execution chain',
-        steps: [
-          { q: 'How did you sequence 10+ teams?', a: 'Per-feature dependency graph + per-team readiness gate. Daily sync. P0/P1 triaged within 24h.' },
-          { q: 'What was the riskiest path?', a: 'Upgrade/downgrade. Soft blockers in legacy AU configs could lock customers in or corrupt data. Gated hardest.' },
-          { q: 'What would have caused rollback?', a: 'Analytics drift on key metric, upgrade-path corruption, or critical region-specific bug. Validated pre-GA precisely to avoid.' },
-          { q: 'What did you personally drive?', a: 'Sequencing + readiness gates for Projects/IES slice. Personal validation of upgrade/downgrade and analytics correctness for our area. Escalation owner for cross-team blockers.' },
-        ],
-      },
-    ],
-    followUps: {
-      firstPrinciples: [
-        { q: 'Why is soft launch the right call? Doesn\'t no-marketing waste the launch moment?', a: 'In a market owned by Xero and MYOB, a botched first impression confirms the incumbent. Soft launch converts real AU traffic into validation before marketing amplifies anything. The "launch moment" is worthless if what launches is broken — marketing follows confidence, not the calendar.' },
-        { q: 'Why gate hardest on upgrade/downgrade rather than features?', a: 'Features can be descoped, patched, or shipped later. A corrupted upgrade is irreversible for the customer it hits — data damage plus trust damage in money software. Gate intensity should match irreversibility, not visibility.' },
-        { q: 'How do you lead 10+ teams with zero authority over them?', a: 'Replace authority with structure everyone agrees to: explicit gates, a shared dependency graph, an objective cutoff date, and daily triage. Nobody argues with an agreed structure the way they argue with a person.' },
-      ],
-      execution: [
-        { q: 'What made Oct 27 the pre-prod cutoff? Why that specific buffer before Dec 4?', a: 'The gap gives a validation window for cross-team integration testing, fix cycles for surfaced issues, and holiday-season code-freeze realities. A cutoff without buffer is just the launch date wearing a costume.' },
-        { q: 'What happened when a team missed its gate?', a: 'The documented mechanism: green the gate or descope the feature. The date holds; scope flexes. That rule stated upfront prevents the eleventh-hour "just one more day" spiral.' },
-        { q: 'How were cross-team blockers actually resolved?', a: 'Daily readiness sync with severity-tiered triage — P0/P1 handled within 24h. As escalation owner for our slice, my job was making blockers visible fast and routing them to whoever could unblock.' },
-      ],
-      productReasoning: [
-        { q: 'Why mid-market, construction and professional services specifically?', a: 'That segment has the strongest need for Advanced capabilities (projects, budgets, workflows) and ~250K existing AU QBO subscribers form the upgrade base. Beachhead where the product is differentiated, not where competition is strongest.' },
-        { q: 'How does this launch compete with Xero on its home turf?', a: 'It does not try to beat Xero at SMB accounting. It targets the mid-market segment where advanced project/workflow needs outgrow entry products — a segment gap, not a head-on fight.' },
-      ],
-      operational: [
-        { q: 'What would have triggered a launch rollback?', a: 'Analytics drift on a key metric, upgrade-path corruption, or a critical region-specific defect. The pre-GA gating was designed precisely so none of these could be discovered after launch.' },
-        { q: 'How did you verify analytics correctness for AU?', a: 'Validation of analytics pipelines against AU-shaped data pre-GA for our area — correctness gating meant sensible values verified before customers could see a dashboard.' },
-      ],
-      career: [
-        { q: 'What did this teach you that pure engineering projects could not?', a: 'That the hardest system at launch scale is the org, not the code. Dependency graphs, gates, and cadence are engineering disciplines applied to people — and they work for the same reason they work in code: they make state explicit.' },
-        { q: 'What would you do differently?', a: 'Build the AU-shaped test data set in parallel with feature work rather than after — scenario diversity late in the cycle compresses the validation window. Retrospective opinion.' },
-      ],
-    },
-  },
   'template-sharing': {
+    firstPrinciplesQA: [
+      { q: "What was actually hard here?", a: "Two things. Sharing is a read-model problem: SHARED_WITH_ME is the union of four scope predicates (ALL, ALL_MY_COMPANIES, ALL_MY_CLIENTS, CUSTOM), and ALL_MY_CLIENTS depends on the firm-client relationship graph that lives outside UCS. And publish is a dual write across two services (WAS + UCS) with no shared transaction — so failure ordering had to be designed, not hoped." },
+      { q: "Why write WAS before UCS?", a: "When two writes cannot be atomic, order them so the failure mode is the harmless one. If UCS fails after WAS succeeded, you have an orphan definition — invisible to users, cleanable by a job. The reverse order risks a UCS record pointing at a definition that does not exist — a dangling reference, which is user-visible corruption. Orphan beats dangling reference every time." },
+      { q: "Why is offeringId mandatory on everything?", a: "UCS is one platform serving many products. offeringId is the partition key that keeps every product's data in its own lane — it is precisely what makes the platform plugin-agnostic. Your templates live under your offeringId; the platform never mixes tenants of different products." },
+      { q: "Why cursor pagination instead of page numbers?", a: "The shared-templates list changes while someone pages through it. Offset pagination (page 3 = skip 40) shifts under inserts — duplicates or skipped rows. A cursor is a stable position marker: give me items after THIS one. Correct under concurrent writes; Relay-style first/after/endCursor/hasNextPage." },
+      { q: "Is the PII masking a security boundary?", a: "No, and saying so cleanly is the senior move. It is client-side dot-dash masking at publish time — a publisher-trust convenience. A malicious client could skip it. A real guarantee requires a server-side backstop [VERIFY whether one exists]. Precision about what a control does and does not protect is worth more than overclaiming." },
+    ],
     framing:
       'Frontend-led with platform-thinking implications. Your source describes the WAS → UCS publish ordering, PII masking with dot-dash, and share scopes. Failure modes below are scenarios the design accounts for, not historical incidents.',
     firstPrinciples: {
@@ -2158,6 +1367,12 @@ const DEEP_DIVES = {
     },
   },
   'consolidated-email': {
+    firstPrinciplesQA: [
+      { q: "What is the one deep design decision in this project?", a: "WHEN the preference is read. The consolidation toggle is resolved at EXECUTION time — the moment an email is actually sent — not at toggle time. For any setting, the design question is: at what moment is this read, and what is in flight when it changes?" },
+      { q: "Why not resolve at toggle time?", a: "Emails already queued or scheduled when the user flips the switch. Resolve at toggle time and in-flight emails behave inconsistently — some old mode, some new, depending on where they sat in the pipeline. Resolve at execution time and behavior is deterministic no matter when the toggle flips. [If asked how you know: an early behavior report during rollout traced exactly to this — VERIFY the specifics.]" },
+      { q: "Why not fork the shared email components for the new mode?", a: "The CC/BCC, freeform-text, and attachment components were shared with other flows. Forking creates two copies to maintain forever — every future fix lands twice or diverges. Instead they became mode-aware via props: one component, behavior switched by mode, every existing capability preserved. Harder up front, no permanent fork debt." },
+      { q: "What made the rollout safe?", a: "Legal review as a merge gate (customer-facing email content), mock APIs so the frontend never blocked on backend readiness, percentage-based rollout, and a default that preserved old behavior — opt-in, reversible, backward compatible." },
+    ],
     framing:
       'Frontend-focused. Your source confirms toggle preference, class-based React without hooks, mock APIs for testing, and legal/branding requirements. War stories below are scenarios the design accounts for, not specific incidents to claim.',
     firstPrinciples: {
@@ -2307,6 +1522,13 @@ const DEEP_DIVES = {
     },
   },
   'implicit-ads': {
+    firstPrinciplesQA: [
+      { q: "What is this project, in one sentence?", a: "An academic, segment-level binary classifier for implicit advertising in video: extract features from each segment, model outputs a probability, threshold turns it into a flag — ~85% test-set accuracy. Frame it as academic up front; the calibrated modesty buys credibility." },
+      { q: "Why multi-modal?", a: "Implicit advertising is an INTENT signal, and intent rarely shows in one channel. A visible logo alone is incidental product use; promotional audio alone misses silent placements. Brand present (visual) + promotional framing (audio) + unusual placement in the flow (contextual) — together they signal promotion. The features fuse into one vector so the model learns cross-mode combinations. The intent lives in the combination." },
+      { q: "Why recall-prioritized?", a: "Cost of errors. As a screening tool, a missed implicit ad slips through undisclosed — genuinely bad; a false flag costs a reviewer seconds. So the threshold is tuned low: flag aggressively, maximize recall, accept lower precision. The golden contrast: the budget import tunes the OPPOSITE way (precision) because a wrong auto-match onto money is the costly error there. Same tradeoff, opposite directions, because the error costs are reversed." },
+      { q: "Is 85% accuracy good?", a: "Careful — accuracy flatters imbalanced classes. If only 10% of segments are ads, a model that always says not-an-ad scores 90% while catching nothing. Given the recall priority, recall and F1 were the metrics that mattered; accuracy was the headline, not the target. And it is test-set accuracy — performance on unseen data, the only kind that means anything." },
+      { q: "Where does your knowledge stop?", a: "At model internals. The honest exit if pushed: this was academic — I understand these systems at the level of designing around them and reasoning about tradeoffs (features, thresholds, precision/recall, generalization), not deriving optimizers. Saying the boundary cleanly is a strength, not a confession." },
+    ],
     framing:
       'Academic/research project. Useful for analytical depth, not core strength. Keep answers honest and tight. I do not have detailed source material on specific algorithms used — claims below are conservative; verify specifics before claiming.',
     firstPrinciples: {
@@ -2413,6 +1635,13 @@ const DEEP_DIVES = {
     },
   },
   'budget-versioning': {
+    firstPrinciplesQA: [
+      { q: "What tension drives the entire design?", a: "History versus authority. Lose old versions and you cannot answer what was originally planned — a real accounting need. Keep every version and every read must answer: which one is THE budget right now? The design must keep history AND stay authoritative, under concurrent editing, on money." },
+      { q: "Why does naive version++ fail?", a: "Four ways. Every read becomes ORDER BY version DESC LIMIT 1 — forget once, a report shows stale money. Versioning per keystroke floods history with junk — versions should mark meaningful moments. Casual draft edits and formal publishes get flattened into one motion. And two users saving from two tabs silently lose the first save — the lost-update problem." },
+      { q: "What is the core mechanism?", a: "DRAFT is mutable in place — one working row, every save overwrites. Publish FORKS: copy the draft into a new immutable LOCKED row (copy-on-write); the previous LOCKED goes INACTIVE, the new one is ACTIVE. Three orthogonal axes keep it reasonable: state (what kind of row), status (which is authoritative), revision (which snapshot) — composite key (budgetId, revision, companyId)." },
+      { q: "How are concurrent editors handled?", a: "Optimistic locking, two layers on purpose. editSequence (JPA @Version) travels to the client as a syncToken and comes back with the save; a mismatch returns 409 Conflict and the client refreshes. The explicit check gives clean UX; @Version catches the true race at commit with OptimisticLockException. Optimistic because you never hold a DB lock while a browser tab sits open." },
+      { q: "Why can LOCKED never become DRAFT?", a: "A locked revision may already back an estimate a customer has seen. Unlock-and-edit would shift ground other systems believe frozen. Once immutable, always immutable — enforced as INVALID_LOCKED_STATE. New work happens on the draft and becomes a NEW revision." },
+    ],
     framing:
       'A financial-records + concurrency + event-driven story. Spans frontend TS and backend Java — VERIFY which layer is yours before claiming. Everything below is grounded in the repo; the ownership scope is the one thing only your PRs can confirm.',
     firstPrinciples: {
@@ -2579,6 +1808,13 @@ const DEEP_DIVES = {
       },
     ],
     followUps: {
+      conceptualFoundations: [
+        { q: "State vs status vs revision — why three separate axes?", a: "state = what KIND of row (DRAFT/LOCKED/HIDDEN), status = which row is the current authority (ACTIVE/INACTIVE), revision = which snapshot. Conflate any two and the model stops being reasonable — you end up encoding authority into version numbers or mutability into flags. Orthogonal axes make every lifecycle transition a clean tuple change." },
+        { q: "Optimistic vs pessimistic locking — when is each right?", a: "Pessimistic takes a DB lock up front — correct but deadly for web UIs, because a browser tab can sit open for hours holding it. Optimistic assumes conflicts are rare: no lock, check a version counter at commit, reject the loser with 409. Right whenever hold-time is human-scale. The budget uses optimistic with two layers: explicit syncToken compare for clean UX, JPA @Version for the true race." },
+        { q: "What is copy-on-write, generally?", a: "Share or keep the current thing; the moment a change is needed, copy it and change the copy — the original stays frozen. Filesystems, string implementations, and this budget design all use it. Publish copies the draft into a new LOCKED row; the deep copy matters — copying references instead of data would let later draft edits mutate the supposedly-immutable snapshot through shared objects." },
+        { q: "Why 409 Conflict specifically?", a: "Status codes are contract. 400 says your request was malformed (it was not), 500 says the server broke (it did not). 409 says: valid request, but the resource changed underneath you — refresh and retry. The client can build the right recovery UX only because the code is semantically precise." },
+        { q: "What does the composite primary key buy?", a: "(budgetId, revision, companyId) makes every physical row uniquely addressable — one logical budget, many revision rows — and bakes tenant isolation into the identity itself: no query can even express crossing companies. Identity design doing security work for free." },
+      ],
       firstPrinciples: [
         { q: 'Why immutable revisions instead of just editing in place?', a: 'A published budget is a financial record that downstream consumers act on. Its approved state must be reconstructable forever. Copy-on-write preserves it; in-place mutation destroys it.' },
         { q: 'Why only fork on publish, not on every draft save?', a: 'Drafts are work-in-progress with no external consumers, so overwriting is safe and avoids revision explosion. Publish is the checkpoint where a frozen version becomes necessary.' },
@@ -2600,6 +1836,14 @@ const DEEP_DIVES = {
     },
   },
   'ai-budget-import': {
+    firstPrinciplesQA: [
+      { q: "What tension drives the whole design?", a: "A budget is deterministic — $14,200 is not about-$14,200. An LLM is probabilistic — plausible, variable, sometimes wrong. The design question: how does a probabilistic component feed a deterministic financial record without the uncertainty leaking into the money? Answer: the AI never writes to the record, and the human reviews exactly where the AI is uncertain." },
+      { q: "Why asynchronous?", a: "LLM extraction takes seconds to tens of seconds, varying with document size. Block a user request on that and you get HTTP timeouts, frozen UI, lost work on tab close. V1 was synchronous and taught that lesson on large documents; V2 went async — upload returns immediately, completion arrives by ICE push with a 5-second poll fallback (push for speed, poll so a dropped message can never hang the UI forever)." },
+      { q: "Why are EXTRACTED and COMPLETED separate states?", a: "That gap IS the human-in-the-loop, encoded as a state machine. The AI can reach EXTRACTED on its own — results parked for review, not in the budget. Only a human transition crosses to COMPLETED, and what gets written is the human-approved reviewedLines, never raw model output. The state machine is server-authoritative so closing the laptop loses nothing." },
+      { q: "How does confidence actually work?", a: "The document says Lumber; the cost code says Framing Materials — zero shared characters, same meaning. Embeddings map text to vectors where similar meanings are geometrically close; cosine similarity scores the closeness; thresholds cut the score into MATCH / PARTIAL_MATCH / NO_MATCH. The thresholds are a precision-recall dial, tuned toward precision on financial data — when in doubt, ask the human. AiSparkles marks only the uncertain tiers: attention where judgment adds value." },
+      { q: "What about hallucination?", a: "Plausible output not grounded in the input — a line item that LOOKS real but is not in the document. It cannot be eliminated at the model level, so the system is built to be safe when the model is wrong rather than assuming it is right: nothing auto-commits, uncertain rows flagged, human gates the only write path, 100-record guardrail bounds a runaway extraction." },
+      { q: "What did you own versus consume?", a: "Consumed: the QBAI extraction/matching model (embeddings, cosine, confidence) behind a GraphQL BFF, and the ICE pub/sub. Owned: the async orchestration, server-authoritative state machine, review UI and confidence surfacing, guardrails, budget-grid integration. The reframe: the model is the easy 20% — the safe, async, human-gated system around it is the hard 80%." },
+    ],
     framing:
       'An AI-integration + async-systems + human-in-the-loop story. The value is the seam between a probabilistic AI upstream and a deterministic financial record downstream. VERIFY your slice; disclaim the QBAI model and the ICE pub/sub infrastructure.',
     firstPrinciples: {
@@ -2768,6 +2012,15 @@ const DEEP_DIVES = {
       },
     ],
     followUps: {
+      conceptualFoundations: [
+        { q: "What is an LLM actually doing?", a: "Predicting likely next tokens (word-pieces), one after another, based on patterns learned from enormous text via self-supervised training — the text is its own label. It optimizes for plausibility, not truth. That single fact generates the whole design: async (generation is slow), confidence tiers (output is probabilistic), human gate (plausible is not the same as correct)." },
+        { q: "What is an embedding, in one breath?", a: "A function that maps text to a vector of numbers such that similar MEANINGS land geometrically close. Cosine similarity measures how aligned two vectors are. Meaning becomes geometry — which is how Lumber matches Framing Materials with zero shared characters. Semantic matching, not string matching." },
+        { q: "Precision vs recall — and the two-project contrast.", a: "Precision: of what you flagged positive, how much was right. Recall: of the real positives, how much you caught. They trade off through the threshold, and which you favor follows the cost of each error. Budget import: wrong auto-match onto money is expensive → precision. Ads detector: missed ad slipping through is expensive → recall. Same principle, opposite directions — land that contrast and you have proven you understand it." },
+        { q: "What is hallucination and why can you not just fix it?", a: "Plausible output not grounded in the input. The model is doing exactly what it was trained to do — produce likely text — so hallucination is not a bug you patch but a property you design around. Hence: safe when the model is wrong, never assuming it is right." },
+        { q: "What is calibration, and why no auto-accept even on MATCH?", a: "A confidence of 0.9 does not guarantee 90% real-world correctness — scores are not perfectly calibrated. So high confidence reduces review attention (no sparkle) but never bypasses the gate. On financial data, the human stays in the loop for every write." },
+        { q: "Push vs poll — why both?", a: "Push (ICE pub/sub) is fast but a message can drop; poll (5s) is guaranteed but adds latency. Push for speed, poll as the safety net, both feeding ONE idempotent completion handler so double-delivery is harmless. The UI can never hang forever on a lost event." },
+        { q: "Why is there a 100-record guardrail?", a: "Bounds the blast radius of a runaway or hallucinated extraction and keeps review humanly possible — 100 rows is reviewable, 10,000 is a rubber stamp. Guardrails protect the human gate from becoming theater." },
+      ],
       firstPrinciples: [
         { q: 'What makes this an engineering problem and not just an AI feature?', a: 'The seam: a probabilistic upstream feeding a deterministic financial record. The entire design — tiers, human-in-the-loop, gated save, async status — exists to manage that seam safely.' },
         { q: 'Why three tiers rather than a confidence percentage?', a: 'A percentage offloads "is this good enough?" to the user. Three discrete tiers with distinct UI treatment turn a probability into an action: auto-accept, confirm-a-pre-fill, or force-pick.' },
@@ -2786,6 +2039,78 @@ const DEEP_DIVES = {
       ownership: [
         { q: 'What did YOU build?', a: 'VERIFY from PRs. Likely frontend slice: the review UI (match-tier normalization, AiSparkles column config, alternatives popover), the Redux status slice, the polling hook, or the side-panel orchestration. Claim exactly what your commits show.' },
         { q: 'What did you NOT build?', a: 'Disclaim: the QBAI extraction/matching model, the ICE pub/sub infrastructure, the upload widget internals, and V3 agentic if you did not work on it.' },
+      ],
+    },
+  },
+  'test-parallelization': {
+    framing:
+      'This project is an isolation story wearing a speed costume. The 10→3 min number gets attention, but the engineering was making four parallel workers safe against shared state — in the JVM (via process forks) and in the database (via tenancy partitioning). Lead with the isolation reasoning; the speedup is just the receipt.',
+    firstPrinciplesQA: [
+      { q: 'What was the real bottleneck?', a: 'Serialization, not CPU. Each scenario is I/O-bound (DB reads/writes), and 10K of them ran one at a time in a single JVM. A faster machine barely helps an I/O-bound serial run; overlapping the waits via parallelism is the actual fix. You do not fix serialization by making the serial thing faster — you break the serialization.' },
+      { q: 'Why not threads inside one JVM?', a: 'Threads share the entire heap — every static field, every singleton, every cache. The legacy suite assumed one test at a time (shared TestContext, static caches, Spring singletons with mutable state). Threading would expose years of unsafe assumptions as intermittent, CI-only flakes, and fixing it means a multi-month cross-team thread-safety refactor. Forks sidestep all of it.' },
+      { q: 'Why do JVM forks make it safe?', a: 'Each fork is a separate OS process with its own private memory. Fork 1\u2019s statics are physically different variables from fork 2\u2019s — the OS will not let one process read another\u2019s memory. Isolation is enforced by the substrate, not by programmer discipline. Cost: extra RAM per JVM and startup time — a fair price for structural safety.' },
+      { q: 'The forks share one database. How is that safe?', a: 'Use the app\u2019s own production isolation: every row is scoped by companyId and every query filters on it. If fork 1 only ever touches companies 1000-1999 and fork 2 only 2000-2999, they cannot see each other\u2019s rows even in the same tables. The partition function is fork_id → disjoint company range — pure, static, zero runtime coordination.' },
+      { q: 'And inside one fork?', a: 'Tests run sequentially within a fork, so there is no race — only temporal contamination (test B inheriting test A\u2019s leftovers). Fix: fresh company per scenario from the fork\u2019s pre-provisioned pool. State starts empty by construction; a crashed test corrupts only a company nothing else will touch. No cleanup logic to trust.' },
+      { q: 'Why is the fork count 4 and not 8?', a: 'Parallelism speeds you up only until the first shared resource saturates. At 4 forks, CPU was near-saturated with DB headroom. At 6, DB connection pressure and slow queries appeared. At 8 it regressed: CPU context-switch thrash, halved per-fork startup amortization, and forks queuing inside the DB. The number is an empirical sweet spot of the environment, not a universal.' },
+    ],
+    decisions: [
+      { q: 'Process forks vs thread parallelism?', options: ['Cucumber threads in one JVM', 'Maven Surefire JVM forks', 'Refactor suite to be thread-safe first'], chosen: 'Surefire forks, reuseForks=true', why: 'Threads share heap → legacy statics become race conditions with the worst failure mode (intermittent CI-only flakes). The refactor is multi-month and cross-team. Forks give structural isolation for the price of RAM + startup.', tradeoff: 'Each fork pays Spring startup and its own heap; reuseForks=true amortizes startup across the fork lifetime.' },
+      { q: 'How to isolate against the shared DB?', options: ['One DB per fork', 'Transaction-wrap and rollback per test', 'Truncate between tests', 'Per-fork companyId range partitioning'], chosen: 'companyId range partitioning', why: 'Uses the app\u2019s production multi-tenancy invariant — queries are companyId-scoped, so disjoint ranges mean disjoint visibility. No infra cost (vs 4 DBs), works for tests that commit (vs rollback wrapping), and no shared truncation hazard.', tradeoff: 'Requires pre-provisioned company pools and a nightly reset job.' },
+      { q: 'Fresh company per scenario vs shared company + cleanup?', options: ['One company per fork + cleanup hooks', 'Fresh company per scenario from pool', 'Fresh per feature file'], chosen: 'Fresh per scenario', why: 'Cleanup-based isolation silently poisons the next test whenever cleanup has a bug or a test crashes before teardown. Fresh-per-scenario means empty state by construction — a stronger guarantee with no growing cleanup tax.', tradeoff: 'Bigger pool to provision; scenarios needing shared setup re-create it via Cucumber Background on the fresh company.' },
+      { q: 'How to assign tests to forks?', options: ['Static round-robin by class', 'Dynamic pickup seeded by historical durations'], chosen: 'Duration-seeded dynamic pickup [VERIFY]', why: 'Wall-clock = slowest fork. Static round-robin can dump all slow classes on one fork. Seeding by last-run durations plus dynamic pickup keeps forks within ~15% of the theoretical minimum.', tradeoff: 'Needs duration history; imperfect balance accepted as not worth further complexity.' },
+    ],
+    algorithms: [
+      { name: 'Fork → company partition function', detail: 'At fork startup, read -Dfork.id, compute the disjoint range (e.g., start = 1000 + (forkId-1)*1000), load those IDs into an in-memory queue. checkoutCompany() pops one per scenario; used companies are not returned during the run (nightly reset). Two forks cannot collide because the function is pure and the ranges are disjoint by construction.' },
+      { name: 'Ghost-scenario detector', detail: 'Cucumber --dry-run maps every scenario to its step-definition methods. JavaParser walks each method\u2019s call graph (BFS over method calls, bounded to our own packages). A scenario whose entire reachable set is deleted/deprecated code is flagged. Tool proposes; area tech leads dispose. 550 confirmed dead and removed.' },
+      { name: 'Count reconciliation', detail: 'Per-scenario start log line tagged with fork id + scenario name, aggregated and compared against the sequential baseline. The mismatch it exposed was not "parallel ran extra tests" — both ran the ghosts — it was that the old reporter had been silently under-counting early-failing scenarios for years.' },
+    ],
+    numbers: [
+      { metric: 'CI feedback loop', value: '10 min → ~3 min', note: '≈70% reduction; wall-clock ≈ slowest fork.' },
+      { metric: 'Scenarios', value: '10,000+', note: '~2,500 per fork at forkCount=4.' },
+      { metric: 'Ghost scenarios removed', value: '550', note: 'Confirmed by owners; running for ~2 years against deleted code.' },
+      { metric: 'Fork sweep', value: '2→~5.5m · 4→~3.1m · 6→~2.9m · 8→~3.4m', note: '[VERIFY] — the shape (regression past the DB saturation point) is the point.' },
+      { metric: 'Flake rate', value: '~15% → <0.2%', note: '[VERIFY] before vs after isolation hardening.' },
+    ],
+    warStories: [
+      { title: 'The fork that hung at 99%', story: 'Roughly 1 in 15 CI runs, one fork would stall forever near the end; never reproducible locally. Root cause: a pipe-buffer deadlock between the fork and the Surefire parent — the fork emitting large output at shutdown while the parent waited for completion. Fix: bound fork output + a heartbeat so the parent detects and kills a stalled fork deterministically. Lesson: parallelizing does not just add data races — it adds coordination races between workers and the infrastructure supervising them. The bugs move up a layer. [VERIFY specifics]' },
+      { title: 'Flake spike before isolation landed', story: 'First parallel runs flaked ~15%: ordering assumptions, Thread.sleep-based waits that failed under CPU contention, and early partitioning gaps. Fixed by condition-based waits, fresh-per-scenario allocation, and a flake dashboard clustering failures by scenario. Retro lesson: build the observability BEFORE the change that needs it.' },
+    ],
+    edgeCases: [
+      'Scenario needing two companies: checkout both from the same fork\u2019s pool — never borrow across forks.',
+      'Pool exhaustion mid-run: sized generously (pool ≥ scenarios per fork that need one); hot-reset fallback existed and was never needed. Design for the failure mode you hope never to hit.',
+      'Tests must never run DDL — CREATE INDEX/ALTER TABLE takes table locks that stall every other fork. Schema migrations happen once at CI startup, before forks.',
+      'Heavy fixtures: a separate pool of pre-seeded companies at fixture levels (empty / small / with-history); tests declare the level they need.',
+    ],
+    whatIWouldChange:
+      'Build the flake dashboard before flipping on parallelism, not after — I spent a week hunting individual failures blind. Observability first, then the change it measures. Also: per-fork databases become the right call if the suite grows ~10x, and past that the honest answer is fewer end-to-end tests, not more forks.',
+    chains: [
+      { q: 'Speed it up further?', a: 'More forks hits the DB wall — next lever is per-fork DBs, then test-pyramid rebalancing (more unit/contract tests, fewer full-stack scenarios). Parallelism only helps until the first shared resource saturates.' },
+      { q: 'Same idea elsewhere in your work?', a: 'Same shape as traffic replay: isolation by construction, not convention. Forks are to statics what network-layer write-mocking is to downstream services — the substrate enforces safety so discipline does not have to.' },
+    ],
+    followUps: {
+      interviewDrills: [
+        { q: 'Why not just a bigger CI machine?', a: 'The suite is I/O-bound and serial; faster CPU buys ~5-10% per scenario. The bottleneck was running one at a time — you break serialization with concurrency, not silicon.' },
+        { q: 'Cucumber parallel vs Surefire forkCount?', a: 'Cucumber parallel = threads in one JVM = shared heap = legacy statics become races. Surefire forks = separate JVMs = structural isolation. For an old suite, forks are the only path that avoids a cross-team thread-safety refactor.' },
+        { q: 'reuseForks true or false?', a: 'True. False kills and reboots the JVM (and Spring, 20-30s) per test class — the startup tax eats the parallelism win. True means Spring boots once per fork; that is exactly why the isolation work (partitioning, env keying) had to be solid — a reused JVM carries state forward.' },
+        { q: 'Don\u2019t parallel forks contend inside the DB?', a: 'Row locks: no — companyId partitioning means disjoint rows. What remains shared: connection budget (per-fork pools sized against max_connections), disk I/O queue depth, commit log. That shared machinery is precisely why 8 forks regressed. And no DDL in tests, ever — table locks stall everyone.' },
+        { q: 'How did you know the 550 were really dead?', a: 'The tool proposed, owners disposed. Flagged only scenarios whose entire reachable code path was deleted/deprecated; verified against coverage; walked the list with each area\u2019s tech lead. Default was keep, not delete. Nothing removed on my sole authority.' },
+        { q: 'What if 5 of the 10 minutes were Spring startup?', a: 'Then parallelizing execution attacks the wrong bottleneck — four forks each paying 5 minutes of boot is still 5 minutes wall-clock. The right fix becomes context caching / test slicing first. I profiled first: startup was under 30s, execution dominated — which is why parallelism was the right lever. Always profile before optimizing.' },
+        { q: 'Does this survive 100K scenarios?', a: 'Directionally, with two walls: more forks saturate the shared DB (per-fork DBs become necessary around 8-12), and pool provisioning must scale. Past that the honest answer is rethinking the test pyramid — at 100K end-to-end scenarios the problem is the suite, not the runner.' },
+        { q: 'Why not tags — run @smoke on PRs, full on merge?', a: 'Tags reduce what you run: coverage traded for speed, bugs surface post-merge with bigger blast radius. Parallelization cuts how long the same coverage takes — no one has to be smart about which bugs are acceptable to catch late. Not mutually exclusive; I picked the lever with no coverage cost.' },
+        { q: 'Three runs, three pass rates — what does that tell you?', a: 'Flakes, and flakes are signal about isolation assumptions, not noise. Hunt in order: ordering assumptions (dynamic assignment changed execution order), timing assumptions (sleeps failing under CPU contention → condition-based waits), and state leaks. Systemically: flake dashboard, cluster by scenario, quarantine repeat offenders, fix root causes — never just retry.' },
+        { q: 'One thing you\u2019d do differently?', a: 'Observability before the change. I turned on parallelism, drowned in a 15% flake spike for a week, then built the dashboard that would have made it a day. You cannot debug what you cannot see — the tooling comes first, so the change is measurable from day one.' },
+      ],
+      conceptualFoundations: [
+        { q: 'Process vs thread — the one-breath version.', a: 'A process is a running program with private, OS-enforced memory (an apartment). Threads are workers inside one process sharing all its memory (roommates — same fridge, same couch). Sharing is threads\u2019 power and their danger: any shared mutable thing can be corrupted by whoever touched it last.' },
+        { q: 'Why is static state the villain?', a: 'A static field is one shared slot per JVM. Test A sets TestContext.currentCompany, test B overwrites it mid-flight, test A reads B\u2019s value. The suite was written when only one test ran at a time, so nobody made anything thread-safe — turning on threads does not add safety, it exposes a decade of assumptions.' },
+        { q: 'What exactly is a Surefire fork?', a: 'A child JVM that Surefire launches to run a chunk of tests. Four forks = four independent JVMs, each booting its own Spring context, running its chunk sequentially inside itself. Wall-clock ≈ slowest fork, not the sum. Results flow back to the parent over a pipe (which is where the shutdown-deadlock bug lived).' },
+        { q: 'Where does Spring fit?', a: 'Spring beans are singletons per context, one context per JVM — a nightmare for thread parallelism, perfectly fine for forks because each fork owns its own set. All four forks boot Spring in parallel, so aggregate startup wall-clock ≈ one boot. The DB is NOT a Spring singleton — it is genuinely shared, which is what the companyId partitioning handles.' },
+        { q: 'Why does companyId partitioning give real isolation?', a: 'Multi-tenancy is a production invariant: every query filters WHERE company_id = ?. Two forks on disjoint company ranges share tables but have disjoint visibility — fork 1\u2019s SELECT can never return fork 4\u2019s rows. You are reusing the same mechanism that keeps real customers from seeing each other\u2019s money.' },
+        { q: 'How do scenarios and companies actually get assigned?', a: 'Two independent layers. Which fork runs a scenario: Surefire, duration-seeded dynamic pickup at class level. Which company a scenario uses: the fork\u2019s local pool, keyed by fork.id at startup. Neither layer knows about the other; rerun the suite and both assignments can differ — correctness never depends on either.' },
+        { q: 'What is a CI pipeline, in one example?', a: 'Push → webhook → CI server runs staged config: checkout (10s) → compile (30s) → unit tests (2m) → integration suite (10m ← the pain) → static checks (1m) → build image (1m). Any stage fails, the PR gate turns red. My fix lived entirely inside stage 4 — same input, same pass/fail guarantees, one-third the wall-clock.' },
+        { q: 'Why did counts differ between parallel and sequential?', a: 'Same glob, same discovered scenarios — what differed was REPORTED scenarios. The old sequential reporter silently dropped scenarios that failed very early (a hook/class-loading race); the fork-merge reporting plus my independent per-scenario instrumentation counted honestly. The ghosts ran in both modes; careful counting just finally exposed them.' },
+        { q: 'How was the ghost-detector built?', a: 'Cucumber --dry-run gives scenario → step-definition mapping without executing. JavaParser walks each step method\u2019s AST, recording method calls, recursing only into our packages — a BFS over the call graph. Label reachable methods dead via: no longer exists (strongest), @Deprecated, git-untouched in legacy packages, no production callers. Flag scenarios whose whole reachable set is dead. ~500 lines. The idea is the tool; the discipline is that owners approve every deletion.' },
+        { q: 'Why do slow queries appear at 8 forks?', a: 'The DB has fixed budgets: max_connections, disk queue depth, one commit log. 8 forks × 20-connection pools = 160 concurrent connections — requests start queuing inside the DB, every query carries invisible wait time. Same query, same data, 50ms → 120ms purely from contention. Parallelism helps until the first shared resource saturates; past that it hurts.' },
       ],
     },
   },
@@ -3317,6 +2642,1708 @@ const HR_QUESTIONS = [
 ];
 
 /* ============================================================================
+ * FULL CONTEXT — first-principles teaching stories, beginning to end
+ * Simple language. Read a project here when you want to re-understand it,
+ * not just recall it. Sections build on each other — read top to bottom.
+ * ========================================================================== */
+
+const FULL_CONTEXT = {
+  'traffic-replay': {
+    title: 'Traffic Capture & Replay',
+    subtitle: 'How to test risky changes against reality without touching a single customer',
+    sections: [
+      { h: 'The problem in plain words', body: [
+        "You need to make a dangerous backend change — swap the database engine, upgrade Hibernate, exit Oracle. The service handles ~100k customers a day of financial data. How do you know the change will not break real customer flows?",
+        "Tests only cover the cases someone thought of. Real production traffic has a shape no test suite reproduces: weird payloads, rare workflows, bursts, edge cases nobody imagined. The only realistic test surface is production itself — but you obviously cannot experiment on customers.",
+        "So the question, reduced: how do you get production-scale truth without production-scale risk?",
+      ]},
+      { h: 'The core idea', body: [
+        "Run a second, parallel copy of the service with the risky change applied. Capture real production traffic as it flows to the real service, and replay the same traffic against the parallel copy. Compare three things: are the responses the same (response parity), is the data written the same (data parity), and is it as fast (latency parity). The customer only ever talks to the real service; the parallel one is a shadow.",
+        "The analogy that lands with anyone: it is a flight simulator for production. Real flight conditions, a new version of the plane, and a crash hurts no one.",
+      ]},
+      { h: 'Capturing traffic: the sidecar and the Nginx sandwich', body: [
+        "First problem: how do you capture traffic without touching the application? Putting capture code inside the app couples it to the release cycle and puts your code in the customer's critical path — a bug there adds latency or crashes the app. So capture lives in a sidecar: a separate process in the same pod, using GoReplay, with its own failure domain. If the sidecar dies, customers feel nothing.",
+        "Second problem: traffic is encrypted (TLS). GoReplay captures packets — it cannot read encrypted bytes, and it never does any encrypting or decrypting itself. The solution is a sandwich inside the pod: the load balancer routes to the pod → Nginx #1 terminates TLS (decrypts) → GoReplay passively watches the now-plaintext traffic → Nginx #2 re-encrypts → the app receives it as normal. Ports 9443 in, 8443 out, roughly 10% overhead.",
+        "The security point to land: plaintext exists ONLY inside the pod. The trust boundary is the pod boundary — a physical boundary, not a policy. Traffic on the wire outside the pod is always encrypted.",
+      ]},
+      { h: 'Moving traffic: Kafka and the pairing trick', body: [
+        "Captured requests and responses travel to the replay system over a Kafka bus (payloads additionally encrypted with IDPS — separate from TLS, which only protects data in transit). The subtle problem: a request and its response are captured as two separate events, and you must pair them back together to know what the real system answered.",
+        "The trick is the partition key: transaction_id. Kafka guarantees that all messages with the same key land in the same partition (hash(key) % partitions), a partition is consumed by exactly one consumer, and order within a partition is preserved. So a request and its response always arrive at the same consumer, in order — pairing becomes trivial. Choose the key right and the hard problem disappears.",
+      ]},
+      { h: 'Replaying safely: why writes are mocked and reads are not', body: [
+        "The parallel service, processing a replayed request, will try to call downstream services — payments, notifications. If those calls go through, you double-charge customers and duplicate emails. That must be impossible, not just unlikely.",
+        "So an Envoy egress proxy intercepts every outbound call from the parallel stack, and Wiremock returns fake responses for WRITES. Reads pass through — a read is side-effect-free, worst case some extra read load, never corruption. Writes are mocked at the NETWORK layer, which is the key phrase: even a bug in the application code physically cannot reach a production write endpoint, because the network path does not exist. Blast radius is zero by construction, not by convention.",
+      ]},
+      { h: 'Data parity: the schema is a graph', body: [
+        "Response parity is easy — compare two HTTP responses. Data parity is the hard one: did the replayed request write the same rows to the parallel database that the original wrote to production? You cannot diff whole tables — 32TB, and 99.99% of rows have nothing to do with this request.",
+        "The insight: a relational schema IS a graph. Rows are nodes; foreign keys are edges. The rows one write touches form a small connected subgraph hanging off one parent record. So: BFS starting from (tenant_id, parent_record_id), following foreign keys outward. Each BFS LEVEL is one SQL query — there is no in-memory graph; getNeighbors() is literally a SQL query following FKs. Bounded by a time window (request_timestamp ± delta) and a per-workflow table config. Cost proportional to what the request touched — tens of rows, not terabytes.",
+        "Compare the two row-sets ignoring variable fields — generated IDs and timestamps differ by design between two runs; normalizing them out is what makes the comparison meaningful instead of noisy.",
+      ]},
+      { h: 'The cloned database', body: [
+        "The parallel service needs its own database. It is cloned weekly from production via a storage-level copy-on-write snapshot — cheap, fast, no live replication. No replication is deliberate: the replay must own ALL writes to its DB, or you cannot attribute a row to the replay. Staleness is fine because every compared row was just created by the replay itself, inside the time window.",
+      ]},
+      { h: 'Latency and load', body: [
+        "Latency parity uses per-workflow TP90/95/99 percentiles — averages hide tail regressions, and the tail is where customers hurt. The framework also does load testing by compressing inter-arrival gaps between captured requests, replaying at 0.5x, 2x, or 3x real traffic speed — real traffic shape, synthetic intensity.",
+      ]},
+      { h: 'Impact and the general-purpose framing', body: [
+        "Crucial framing: this is a general-purpose validation platform, not a tool for one migration. It backed the Oracle exit (70+ releases), the Hibernate upgrade (200+ hours saved), and MySQL→Postgres — over 1M requests/day capability, 1000+ manual hours saved, zero P0/P1 incidents. When you open with it, say 'validation platform' first and name migrations as examples, or the interviewer will box it as a one-off script.",
+      ]},
+    ],
+  },
+
+  'cms-migration': {
+    title: 'CMS Migration & Cross-Service Resiliency',
+    subtitle: 'One concept, two records, and what a timeout really means',
+    sections: [
+      { h: 'What a project physically is', body: [
+        "To a customer, a project — Bella's Kitchen renovation — is one thing. Inside Intuit it is TWO records in two services that do not share a database: a project record in IPM (name, dates, budgets, estimates) and a sub-customer record in CMS, linked by a projectRef.",
+        "Why two? Because the transaction and reporting layer of QuickBooks — invoices, bills, payments — predates Projects and only understands customers and sub-customers. The sub-customer record is the adapter that lets a project participate in the money layer. Every problem in this story is a consequence of one idea living in two places that must agree.",
+      ]},
+      { h: 'The three problems of the old world', body: [
+        "Problem 1 — two racing sync paths. Sync between IPM and CMS ran on two code paths simultaneously: direct monolith APIs plus a v4 fallback event. Both could fire for one change; one could succeed while the other failed; they could write in different orders. Result: drift — the two records slowly disagreeing about the truth. The redundancy designed to prevent inconsistency became its source.",
+        "Problem 2 — timeouts treated as failure. When IPM calls CMS and the call times out, three things could be true: the request never arrived (retry is safe), CMS did the work and the response got lost (retrying double-applies), or CMS is still processing. You cannot tell which — this is the Two Generals problem: over an unreliable channel you can never be certain the other side heard you. A timeout is not a NO. A timeout is an UNKNOWN. The old code treated it as failure and rolled back the local write — and when CMS had actually succeeded, that rollback CREATED the exact inconsistency it was trying to prevent, in the opposite direction.",
+        "Problem 3 — the monolith was being decommissioned, so half the sync code had a death sentence. That was the forcing function that turned a chronic problem into a project.",
+      ]},
+      { h: 'The root cause in one sentence', body: [
+        "A project is a single concept represented as two records in two services with no shared transaction, and the legacy sync had two independent code paths writing concurrently while interpreting timeouts as certain failures — so it manufactured the drift it was designed to prevent.",
+      ]},
+      { h: 'Fix 1: one authoritative path', body: [
+        "Two paths caused the drift, so the fix must be one path: the CMS GraphQL API becomes the single authoritative way to write sub-customers; the v4 fallback event path is deprecated. One contract, no belt-and-suspenders. GraphQL is the tactical choice (exact fields, evolvable schema); ONE PATH is the strategic one.",
+      ]},
+      { h: 'Fix 2: reconcile before compensate', body: [
+        "The conceptual turn: after a timeout, do not guess — find out. Every write carries a correlation ID (the projectId — already unique and meaningful). After a failure, read CMS by that correlation ID: did the write actually happen? If yes — roll FORWARD: the write succeeded despite the timeout, just update local state to match. If no — NOW compensate safely.",
+        "That is the killer insight: blind rollback of a call that actually succeeded manufactures the opposite inconsistency. Compensation only runs after reconciliation confirms it is needed. Say it as: reconcile before compensate.",
+      ]},
+      { h: 'Fix 3: idempotency and per-operation compensation', body: [
+        "The correlation ID doubles as an idempotency key: a retried write with the same key returns the original result instead of double-applying. And 'undo' is not one thing — each operation has its own compensation: a failed create is compensated by soft-deleting the optimistic local project; a failed update by reverting to the prior version; a failed inactivate by undeleting. Each compensation is itself idempotent and was hardened by chaos testing — a deliberately faulty endpoint, timeouts forced from 15000ms to 3ms to trigger RestClientException, 3x async retries with bounded timeouts.",
+      ]},
+      { h: 'Fix 4: sync for the user, async for the world', body: [
+        "The user clicking Save needs a deterministic answer NOW — so the IPM→CMS call is synchronous with the reconciliation flow. Downstream systems (STS, ETS, FTS, QBTime) just need to know a project changed — they get asynchronous domain events, published via the platform's transactional outbox (the event is written in the same DB transaction as the state change; a platform publisher pushes it to Kafka). Honesty line: the outbox is platform infrastructure — consumed, not built. Your slice: the STS event-consumer and the resiliency/reconciliation POC.",
+      ]},
+      { h: 'Why not two-phase commit', body: [
+        "2PC requires every participant to hold locks between prepare and commit. CMS is a shared multi-tenant service used by many teams — it will not hold write locks for you. So 2PC is off the table organizationally, not just technically. What was built instead has a name: an orchestrated saga (IPM drives the sequence and compensations) with reconciliation gating compensation. That vocabulary — saga vs 2PC vs outbox — is what makes an interviewer sit up.",
+      ]},
+      { h: 'The result and its provenance', body: [
+        "~95% reduction in cross-service sync failures. Provenance matters: before — a drift detector counted daily mismatches on the legacy paths (baseline); after — a cross-service consistency monitor counts them in near-real-time. The reduction is the comparison, and it is causally credible because each legacy failure category maps to a specific fix. Residual failures: extended CMS outages that exhaust retries.",
+      ]},
+    ],
+  },
+
+  'test-parallelization': {
+    title: 'Parallelized Integration Test Suite',
+    subtitle: 'Processes, threads, and isolation by construction',
+    sections: [
+      { h: 'The quiet tax', body: [
+        "10,000+ Cucumber scenarios, sequential, one JVM: ~10 minutes on every CI run. Not broken — just slow. Engineers pushed and went for coffee; worse, they batched changes into bigger, riskier commits to amortize the wait. Nobody scoped it as a project because slow is not an incident. Noticing it anyway is the L4 move.",
+      ]},
+      { h: 'Processes and threads, from zero', body: [
+        "A process is a running program with its own private memory, walled off by the OS — an apartment. Threads are workers inside one process that share ALL its memory — roommates: same fridge, same couch, if one leaves dishes in the sink the other sees them. Sharing is the threads' superpower (cheap communication) and their curse (anything shared can be corrupted by whoever touched it last).",
+        "In Java, a static field is one shared slot per JVM. The suite was full of them — a static TestContext holding 'the current company', static caches, Spring singletons — all written when only one test ran at a time. Turn on threads and test B silently overwrites test A's context mid-flight. Making it all thread-safe is a multi-month refactor across code other teams own, and getting it wrong yields the worst bug class: intermittent flakes that only reproduce on CI.",
+      ]},
+      { h: 'The escape hatch: JVM forks', body: [
+        "Run four whole JVMs instead of four threads. Each fork (Maven Surefire's word for a child JVM) has its OWN copy of every static, its own Spring context, its own caches — different memory regions the OS will not let cross. Fork 1 cannot corrupt fork 2's state even if it tries. That is structural isolation: enforced by the substrate, not by asking programmers to be careful. The cost — RAM per JVM and startup time — is cheap next to the refactor it avoids. reuseForks=true keeps each JVM alive across test classes so Spring boots once per fork, not once per class.",
+      ]},
+      { h: 'Why four forks', body: [
+        "Parallelism speeds you up until the first shared resource saturates. Empirically: 2 forks ~5.5 min, 4 forks ~3.1 min (sweet spot), 6 forks ~2.9 min but DB connection pressure and slow queries appear, 8 forks ~3.4 min — a regression from CPU context-switch thrash, halved startup amortization, and forks queuing inside the shared database. The number is a property of the environment, not a universal.",
+      ]},
+      { h: 'The real work: isolation against a shared database', body: [
+        "Four processes hitting one database WILL step on each other's data — unless you make their working sets disjoint. Rejected options: one DB per fork (infra cost, drifts from prod reality), transaction-rollback wrapping (integration tests commit their own transactions), truncation between tests (a shared truncate during another fork's test is catastrophe).",
+        "The chosen scheme uses the app's own production invariant: every row is scoped by companyId and every query filters on it. Partition companies by fork — fork.id (a system property injected at fork startup) maps to a disjoint pre-provisioned range: fork 1 owns companies 1000-1999, fork 2 owns 2000-2999. Two forks share tables but have disjoint visibility. The partition function is pure and static: no locks, no registry, no runtime coordination. Two forks physically cannot collide.",
+      ]},
+      { h: 'Isolation inside one fork', body: [
+        "Within a fork, tests run one at a time — so the risk is temporal, not concurrent: test B inheriting test A's leftovers. Fix: every scenario checks out a FRESH company from the fork's pool (a Cucumber Before hook pops one from an in-memory queue). Used companies are not returned during the run; a nightly job wipes and recycles them. State starts empty by construction — no cleanup logic to trust, and a crashed test corrupts only a company nothing else will touch. Scenarios needing shared setup re-create it via Cucumber Background on their fresh company. A second layer — per-fork environment keying — scopes flags and config overrides so forks cannot flip each other's switches.",
+      ]},
+      { h: 'The 550 ghosts', body: [
+        "To verify the parallel run was equivalent, a per-scenario log line (fork id + scenario name) was reconciled against the sequential baseline. The counts disagreed — which should be impossible with the same glob. Digging in: the old sequential reporter had been silently under-counting scenarios that failed very early, and — deeper — 550 scenarios in the glob's path were leftovers from a defunct refactor: running every cycle, testing deleted code, some passing by coincidence. Both modes had been running them for years; careful counting finally exposed it.",
+        "A ~500-line static-analysis tool walked scenario → step definitions (via Cucumber --dry-run) → invoked code (JavaParser call-graph walk, bounded to our packages), flagging scenarios whose ENTIRE reachable code was deleted or deprecated. The tool proposed; area tech leads disposed. 550 confirmed and removed. The discipline: nothing deleted on one person's authority.",
+      ]},
+      { h: 'The hardest bug and the meta-lesson', body: [
+        "~1 in 15 runs, one fork hung at 99% until the pipeline timeout — never locally. Root cause: a pipe-buffer deadlock between fork and Surefire parent at shutdown. Fix: bounded fork output plus a parent-side heartbeat that kills a stalled fork deterministically. The lesson worth saying in an interview: parallelizing does not just add data races — it adds coordination races between the workers and the infrastructure supervising them. The bugs move up a layer.",
+        "Retro: build the flake dashboard BEFORE flipping on parallelism. Observability first, then the change it exists to measure.",
+      ]},
+      { h: 'Results', body: [
+        "10 min → ~3 min per CI run (~70%). 550 dead scenarios gone. Flake rate under 0.2% after isolation hardening. And the second-order effect leadership cares about: commits got smaller and more frequent because engineers stopped batching to amortize CI cost. Faster CI does not just save time — it changes how a team ships.",
+      ]},
+    ],
+  },
+
+  'budget-versioning': {
+    title: 'Budget Versioning',
+    subtitle: 'Keeping history without losing authority',
+    sections: [
+      { h: 'What a budget is and the natural problem', body: [
+        "A Project Budget is the plan for what a project will cost — Bella's Kitchen at $14,200, broken down by cost code. Real owners invoice against it and steer by it, so correctness is money. Budgets change over months: change orders, price shifts, scope. So: when a budget changes, do you lose the old version or keep it? Lose it and you cannot answer 'what did we originally plan?' — a real accounting need. Keep every version and you must answer 'which one is THE budget right now?' for every report and invoice. The whole project is that tension: keep history AND stay authoritative.",
+      ]},
+      { h: 'Why naive version++ fails', body: [
+        "Add a version column, increment on every edit? Four failures. (1) Every read becomes ORDER BY version DESC LIMIT 1 — forget it once and a customer-facing report shows stale money. (2) Versioning per keystroke on a 3500-row grid produces hundreds of junk versions; versions must mark MEANINGFUL moments, not typing. (3) Editing a draft is casual; publishing a plan-of-record is formal — one version++ strategy erases the difference. (4) Two users, two tabs, both save: the second silently destroys the first — the lost-update problem, catastrophic on money.",
+      ]},
+      { h: 'The core insight: only milestones deserve history', body: [
+        "While a user edits, you want the latest state, not history: that is the DRAFT — one row per budget, mutable in place, every save overwrites it. When the user declares 'this is now the plan of record' (Save & Publish), you FORK: copy the draft's data into a new row marked LOCKED — immutable forever. Publish again later and it forks again: the previous LOCKED becomes INACTIVE history; a new LOCKED-ACTIVE row carries the new revision. At any moment: one DRAFT, zero or more LOCKED snapshots, exactly one ACTIVE among them. One line: DRAFT is mutable-in-place; LOCKED is immutable copy-on-write. Editing forks a revision; the old one becomes history.",
+      ]},
+      { h: 'Three axes, kept separate', body: [
+        "state (DRAFT / LOCKED / HIDDEN): what KIND of row. status (ACTIVE / INACTIVE): which row is the current authority for reads. revision: which snapshot number. Composite primary key (budgetId, revision, companyId) — each row uniquely addressable, tenant-scoped. Conflate any two axes and the model becomes unreasonable; keep them orthogonal and every transition is a clean tuple change. The editor reads the DRAFT; reports and estimates read the ACTIVE LOCKED. Two screens, two intents, one model.",
+      ]},
+      { h: 'Concurrency: optimistic locking', body: [
+        "Within the DRAFT, two concurrent editors remain a problem. Every row carries editSequence — a JPA @Version column that increments on every update. The frontend receives it at load (as syncToken) and sends it back with the save. Server compares: match → save proceeds, sequence increments; mismatch → 409 Conflict, the client refreshes and lets the user reconcile. 'Optimistic' because conflicts are assumed rare — you check at commit instead of holding a DB lock while a browser tab sits open for hours (pessimistic locking is a non-starter for web UIs). Two layers on purpose: the explicit token check gives a clean early error; @Version catches the true race at commit. Belt and suspenders.",
+      ]},
+      { h: 'The invariant that keeps history honest', body: [
+        "LOCKED can never become DRAFT (INVALID_LOCKED_STATE). A locked revision may already be referenced by an estimate a customer has seen; unlock-and-edit would shift the ground under a document that other systems believe is frozen. Once immutable, always immutable.",
+      ]},
+      { h: 'The honesty boundary', body: [
+        "History events publish via the platform's transactional outbox — event written in the same transaction as the state change, platform publisher delivers to Kafka. Consumed, not built. Volunteer that boundary before they probe it.",
+      ]},
+      { h: 'Why this project reads as senior', body: [
+        "No drama — just state-machine discipline: three orthogonal axes, copy-on-write immutability, optimistic concurrency, one hard invariant protecting downstream consumers. Sell it as CLEAN, not complex: every decision defended by the constraint it solves. Boring backend done precisely is where senior range shows.",
+      ]},
+    ],
+  },
+
+  'ai-budget-import': {
+    title: 'AI Budget Import',
+    subtitle: 'A probabilistic model in front of a deterministic financial record',
+    sections: [
+      { h: 'The problem and the value', body: [
+        "A business owner's budget already exists — in a spreadsheet, a contractor's PDF. Using Project Budgets meant retyping all of it: ~30 minutes of tedious, error-prone entry. The feature: upload the document, AI extracts the line items, the user reviews and accepts. Thirty minutes of typing becomes a few minutes of review.",
+      ]},
+      { h: 'The core tension', body: [
+        "A budget is deterministic — $14,200 is not 'about $14,200'. An LLM is probabilistic — it predicts plausible text, optimizes for plausibility not truth, and can differ run to run. The entire design answers one question: how do you put a probabilistic component in front of a deterministic financial record without letting the uncertainty leak into the money? Answer: the AI never writes to the record directly, and a human reviews exactly where the AI is uncertain. Everything else is mechanism serving that principle.",
+      ]},
+      { h: 'Why asynchronous, and the three generations', body: [
+        "LLM extraction generates output token by token through a huge network — seconds to tens of seconds, variable with document size. Block a user request on that and you hit HTTP timeouts, frozen browsers, and lost work when a tab closes. So: V1 was synchronous (worked on small docs, broke on big ones — the lesson), V2 async (upload returns immediately; completion arrives via the platform's ICE pub/sub push, with a 5-second polling fallback because pushed messages can drop — push for speed, poll as the safety net so the UI never hangs forever), V3 agentic [VERIFY your involvement — disclaim if none]. All behind flags.",
+      ]},
+      { h: 'The server-authoritative state machine', body: [
+        "Long-running async work needs explicit state, and it must live on the SERVER: NO_DOCUMENT → IN_PROGRESS → EXTRACTED → COMPLETED, plus EXTRACTION_FAILED and CANCELLED. Server-authoritative means closing the laptop loses nothing — the truth survives the browser. The crucial gap is EXTRACTED vs COMPLETED: the AI can reach EXTRACTED on its own (results parked for review, NOT in the budget); only a human transition reaches COMPLETED. That gap IS the human-in-the-loop, encoded as a state machine.",
+      ]},
+      { h: 'Confidence: embeddings, cosine, thresholds', body: [
+        "The document says 'Lumber'; the budget's cost code says 'Framing Materials' — zero shared characters, same meaning. String comparison fails; the matcher uses embeddings: text converted to a vector such that similar MEANINGS land geometrically close. Cosine similarity measures the alignment of two vectors (near 1 = same direction = same meaning). Thresholds turn the score into tiers: MATCH (high — user can skim), PARTIAL_MATCH (medium — flag it), NO_MATCH (low — flag it). Meaning becomes geometry; closeness in space is closeness in meaning.",
+        "The thresholds are a precision-recall tradeoff. Raise the MATCH bar → higher precision (fewer wrong auto-matches) but lower recall (more rows sent to the human). On financial data you tune toward precision — a wrong auto-match onto money costs more than one extra human glance. When in doubt, ask the human.",
+      ]},
+      { h: 'The UI: attention where it matters', body: [
+        "Every extracted line appears in the review grid, but the AiSparkles marker appears ONLY on PARTIAL_MATCH and NO_MATCH rows. Making the human re-verify everything would erase the time savings; the design directs limited human attention to exactly the rows where judgment adds value. Confident rows get skimmed; uncertain rows get checked. That is the difference between a human rubber-stamp and a human where it matters.",
+      ]},
+      { h: 'Hallucination and structural safety', body: [
+        "Hallucination: plausible output not grounded in the input — a line item or amount that LOOKS real but is not in the document. It cannot be eliminated at the model level; the model optimizes plausibility, not faithful transcription. So the system is designed to be SAFE WHEN THE MODEL IS WRONG rather than assuming it is right: nothing auto-commits, uncertain rows are flagged, the human gates EXTRACTED → COMPLETED, and what gets written is the human's reviewed (possibly corrected) lines — never the AI's raw output. Plus a hard guardrail: max 100 records per import, bounding the blast radius of a runaway extraction and keeping review humanly possible.",
+      ]},
+      { h: 'The ownership boundary — volunteer it', body: [
+        "The extraction/matching model is QBAI — a separate team's system, consumed through a GraphQL BFF. Not yours: the model, the embeddings, the cosine scoring, the thresholds' implementation. Yours: the async orchestration, the server-authoritative state machine, the review UI and confidence surfacing, the guardrails, the budget-grid integration. The reframe that wins: the model is the easy 20%; the safe, async, human-gated system around it is the hard 80% — and that is the part where the probabilistic and deterministic worlds actually meet.",
+      ]},
+    ],
+  },
+
+  'template-sharing': {
+    title: 'Template Sharing / UCS',
+    subtitle: 'Multi-tenant sharing on a platform you consumed',
+    sections: [
+      { h: 'The problem', body: [
+        "Setting up workflow templates from scratch is slow and repeated across thousands of companies. The feature: let a user publish a template once and share it — to everyone, to all their companies, to all their clients (accountant firms), or to a custom list. Result: ~60% setup-time reduction, 1000+ publishers.",
+      ]},
+      { h: 'The platform: UCS and the mandatory partition key', body: [
+        "UCS is a multi-tenant sharing platform used by many products — which is why offeringId is a MANDATORY partition key on everything: it is what makes the platform plugin-agnostic. Your product's templates live under your offeringId; another product's under theirs; the platform never mixes them. Auth is app + user + realm via an IAM ticket; every call carries intuit_tid for cross-service tracing.",
+      ]},
+      { h: 'Two records, one ordering rule', body: [
+        "A shared template is metadata in UCS pointing (via entityReferenceId) at the actual workflow definition persisted in WAS. Ordering rule: WAS first, then UCS. Why: if the second write fails, a WAS orphan (definition with no metadata) is invisible and cleanable, but a UCS record pointing at a definition that does not exist — a dangling reference — is user-visible corruption. When two writes cannot be atomic, order them so the failure mode is the harmless one.",
+      ]},
+      { h: 'Share scopes and the hardest read', body: [
+        "Four scopes: ALL, ALL_MY_COMPANIES, ALL_MY_CLIENTS, CUSTOM — at USER or REALM granularity. The hardest query is SHARED_WITH_ME: the union of four visibility predicates, one per scope — and ALL_MY_CLIENTS requires the firm-client relationship graph, which lives OUTSIDE UCS. Listing uses Relay cursor pagination (first/after/endCursor/hasNextPage) — cursors, not offsets, because the underlying list changes while you page.",
+      ]},
+      { h: 'The honesty edge: PII masking', body: [
+        "PII is masked client-side at publish time (dot-dash masking). Be precise about what that is: a publisher-trust convenience, NOT a security boundary — a malicious client could skip it. If asked, the correct posture is that a server-side backstop is what would make it a real guarantee [VERIFY whether one exists].",
+      ]},
+      { h: 'Ownership', body: [
+        "You owned the frontend and orchestration and consumed the UCS platform — you did NOT build UCS's ACL engine. Namespaced IDs (sbg:) and createdBy/createdByUser/createdByCompany audit metadata are platform conventions you followed. Volunteer the boundary; defend the orchestration and the API-design reasoning.",
+      ]},
+    ],
+  },
+
+  'consolidated-email': {
+    title: 'Consolidated Email',
+    subtitle: 'A timing insight hiding inside a preference toggle',
+    sections: [
+      { h: 'The problem', body: [
+        "Customers running many workflows received a flood of individual notification emails. The feature: a per-workflow preference to consolidate them. Results: 65% email-volume reduction, ~40% CSAT lift [VERIFY numbers]. You owned the frontend (class-based React, no hooks — it was that era).",
+      ]},
+      { h: 'The one deep design point: WHEN is a setting read?', body: [
+        "The preference is resolved at EXECUTION time — the moment an email is actually sent — not at toggle time. Why that matters: emails already queued or scheduled when the user flips the toggle. Resolve at toggle time and in-flight emails behave inconsistently — some go out in the old mode, some the new, depending on pipeline position. Resolve at execution time and behavior is deterministic regardless of when the toggle flips. The generalizable question this project teaches: for any setting, ask 'at what moment is this read, and what is in flight when it changes?' — at design time, every time.",
+      ]},
+      { h: 'Mode-aware components, not forks', body: [
+        "The email UI components (CC/BCC, freeform text, attachments) were shared with other flows. The tempting move — fork them for consolidated mode — creates permanent double-maintenance. Instead they were refactored to be mode-aware via props: one component, behavior switched by mode, every existing capability preserved. Harder up front, no fork debt forever.",
+      ]},
+      { h: 'Shipping discipline', body: [
+        "Legal review was a MERGE gate (customer-facing email content), mock APIs decoupled frontend progress from backend readiness, and rollout was percentage-based with the default preserving old behavior — opt-in, reversible, backward compatible.",
+      ]},
+    ],
+  },
+
+  'implicit-ads': {
+    title: 'Implicit Ads Detector',
+    subtitle: 'An academic classifier, framed honestly',
+    sections: [
+      { h: 'What it is and how to frame it', body: [
+        "Academic project: detect implicit advertising — product placement, sponsored segments with no 'Ad' label — in video, at segment level, ~85% accuracy. Frame it honestly up front ('this was academic — where I got hands-on with multi-modal classification and the precision-recall tradeoff') and the calibrated modesty buys credibility for everything after. Decide in advance: this is a backup breadth story, not one you lead with.",
+      ]},
+      { h: 'The classification skeleton', body: [
+        "Every classifier has the same shape: raw input → extract FEATURES (measurable signals) → model maps feature vector to a PROBABILITY → THRESHOLD turns probability into a decision. A feature is one measurable number: brand_logo_present = 1, logo_screen_time = 4.2s, promotional_language_score = 0.7, interrupts_normal_flow = 1. A segment becomes a vector of these; the model — trained on labeled examples (supervised learning) — learned which COMBINATIONS mean 'ad'.",
+      ]},
+      { h: 'Why multi-modal: intent lives in the combination', body: [
+        "A visible logo alone is not an ad — people drink Coke incidentally. Promotional audio alone misses silent placements. Implicit advertising is an INTENT signal, and intent shows up only in the combination: brand present (visual) + promotional framing (audio) + unusual placement in the flow (contextual). Example: a host holding up olive oil saying 'I always use this, genuinely the best' → logo present AND salesy language AND cooking paused → 0.88 probability → flagged. Same logo appearing on a pan in passing with none of the rest → 0.15 → not flagged. Fusion (features from all modes combined into one vector — early fusion) is what lets the model learn those cross-mode interactions.",
+      ]},
+      { h: 'Recall-prioritized — and the golden contrast', body: [
+        "Precision: of what you flagged, how much was really an ad. Recall: of the real ads, how many you caught. This detector was tuned for RECALL: as a screening tool, a missed implicit ad slips through undisclosed (bad), while a false flag costs a reviewer seconds (cheap). Threshold set low, flag aggressively. The interview gold is the contrast: the ads detector tuned toward recall; the budget import tuned toward precision — same tradeoff, OPPOSITE directions, because the cost of each error type was reversed. Land that and a throwaway academic project becomes proof you understand ML tradeoffs deeply enough to apply them contextually.",
+      ]},
+      { h: 'The honest metric caveat', body: [
+        "85% accuracy flatters imbalanced classes: if only 10% of segments are ads, 'never an ad' scores 90% while catching nothing. So the metrics that mattered were recall and F1 (harmonic mean of precision and recall); accuracy was the headline, not the target. Trained supervised with a train/test split — 85% is test-set performance, i.e., generalization to unseen data, which is the only kind of accuracy that means anything (the gap between train and test scores is how you spot overfitting).",
+      ]},
+      { h: 'Where your knowledge stops', body: [
+        "If pushed past the concepts — derive backprop, choose an optimizer — the calibrated exit: 'That is past where I have worked hands-on; I understand these systems at the level of designing around them and reasoning about tradeoffs, not implementing model internals.' Saying it cleanly is a strength.",
+      ]},
+    ],
+  },
+};
+
+/* ============================================================================
+ * CODE GUIDES — whiteboard-ready code with narration
+ * Not production dumps: the RIGHT classes and signatures, built in the order
+ * you would build them live, with what-to-say at each step.
+ * ========================================================================== */
+
+const CODE_GUIDES = {
+  'traffic-replay': {
+    title: 'Traffic Replay — capture config to parity BFS',
+    intro: 'The code here is half config, half algorithm — which is honest to what the system is. Build order: capture topology → pairing consumer → write-mocking → the data-parity BFS. Narrate the invariant (zero customer impact) at every step.',
+    sections: [
+      {
+        h: '1 · The Nginx sandwich + GoReplay sidecar (pod topology)',
+        say: 'Capture is a sidecar, not app code — its failure domain is its own; if it dies, customers feel nothing. TLS terminates at the first Nginx so GoReplay can see plaintext, and the second Nginx re-encrypts before the app. Plaintext exists only inside the pod — the trust boundary is physical.',
+        code: `# Pod (simplified): LB -> :9443 nginx-tls-term -> :8080 plaintext
+#                    -> goreplay (passive tap) -> :8443 nginx-re-encrypt -> app
+
+# nginx-tls-term.conf
+server {
+  listen 9443 ssl;
+  ssl_certificate     /certs/tls.crt;
+  ssl_certificate_key /certs/tls.key;
+  location / { proxy_pass http://127.0.0.1:8080; }   # plaintext hop
+}
+
+# goreplay sidecar command — capture only, never in request path
+gor --input-raw :8080 \\
+    --output-kafka broker-list=kafka:9092,topic=captured-traffic \\
+    --input-raw-track-response \\
+    --http-allow-method GET --http-allow-method POST \\
+    --http-allow-method PUT --http-allow-method DELETE
+# ~10% pod overhead, measured. Payloads IDPS-encrypted before the bus.`,
+      },
+      {
+        h: '2 · Pairing consumer — the partition key does the work',
+        say: 'Requests and responses arrive as separate events; pairing them is trivial because the producer keys every message by transaction_id — same key, same partition, same consumer, in order. I buffer the request briefly and emit the pair when its response lands.',
+        code: `// Producer side (in the capture pipeline):
+//   ProducerRecord(topic, key = transactionId, value = event)
+
+Map<String, CapturedRequest> pending = new HashMap<>(); // per-partition safe
+
+for (ConsumerRecord<String, TrafficEvent> rec : records) {
+  TrafficEvent e = rec.value();
+  if (e.isRequest()) {
+    pending.put(e.getTransactionId(), e.asRequest());
+  } else {                                  // response
+    CapturedRequest req = pending.remove(e.getTransactionId());
+    if (req != null) {
+      replayQueue.submit(new ReplayPair(req, e.asResponse()));
+    } // else: response-first arrival is impossible within a partition —
+      // ordering is guaranteed per key. Orphans -> TTL eviction.
+  }
+}`,
+      },
+      {
+        h: '3 · Write-mocking at the network layer (Envoy → Wiremock)',
+        say: 'The replay stack\u2019s egress goes through Envoy: mutating methods route to Wiremock, reads pass through. This is why blast radius is zero by construction — even buggy code cannot reach a production write endpoint; the route does not exist.',
+        code: `# envoy route config (concept)
+routes:
+- match: { prefix: "/", headers: [{ name: ":method",
+           string_match: { exact: "GET" } }] }
+  route: { cluster: real_downstreams }        # reads pass through
+- match: { prefix: "/" }                       # POST/PUT/DELETE/PATCH
+  route: { cluster: wiremock }                 # writes are faked
+
+# wiremock stub example — deterministic fake for a payment write
+{ "request":  { "method": "POST", "urlPattern": "/payments/.*" },
+  "response": { "status": 201,
+                "jsonBody": { "paymentId": "mock-{{randomValue}}",
+                              "status": "ACCEPTED" } } }`,
+      },
+      {
+        h: '4 · Data parity — BFS over the FK graph',
+        say: 'The schema is a graph: rows are nodes, FKs are edges; one request touches a small subgraph off one parent record. Each BFS LEVEL is one SQL query — there is no in-memory graph. Bounded by a time window and per-workflow table config, then compared with variable fields normalized.',
+        code: `Set<Row> collectSubgraph(String tenantId, String parentId,
+                         Instant t0, WorkflowConfig cfg) {
+  Set<Row> visited = new LinkedHashSet<>();
+  List<Key> frontier = List.of(new Key(cfg.rootTable(), parentId));
+
+  while (!frontier.isEmpty()) {
+    // ONE query per BFS level: fetch children via configured FK edges
+    List<Row> level = db.query(
+      cfg.childQuery(frontier),               // WHERE fk IN (:frontier)
+      Map.of("tenant", tenantId,
+             "from", t0.minus(cfg.window()),
+             "to",   t0.plus(cfg.window())));
+    level.removeAll(visited);
+    visited.addAll(level);
+    frontier = keysOf(level, cfg.followEdges());
+  }
+  return visited;
+}
+
+boolean parity(Set<Row> prod, Set<Row> replay, WorkflowConfig cfg) {
+  return normalize(prod, cfg.ignoredFields())      // generated IDs,
+       .equals(normalize(replay, cfg.ignoredFields())); // timestamps
+}`,
+      },
+      {
+        h: '5 · Latency comparison — percentiles, never averages',
+        say: 'Averages hide tail regressions and the tail is where customers hurt. Per-workflow TP90/95/99, compared with a tolerance band. Load replay just compresses inter-arrival gaps — real traffic shape, synthetic intensity.',
+        code: `LatencyReport compare(List<Sample> prod, List<Sample> replay) {
+  for (double p : new double[]{90, 95, 99}) {
+    double base = percentile(prod, p), cand = percentile(replay, p);
+    if (cand > base * (1 + TOLERANCE))          // e.g. 10%
+      report.flag(p, base, cand);
+  }
+  return report;
+}
+// load mode: replayAt(pairs, speedup) => sleep(gap / speedup) between sends`,
+      },
+    ],
+    close: 'If asked to "code the replay system", pick section 4 — the BFS is the algorithmic heart and it is genuinely yours. Sections 1-3 you narrate as configuration with reasons. Never let the conversation end without "zero by construction, not by convention."',
+  },
+
+  'test-parallelization': {
+    title: 'Test Parallelization — Surefire config to company pool',
+    intro: 'Three artifacts carry the whole design: the Surefire config (forks), the company provider (isolation), and the Cucumber hook (fresh state). The ghost detector is a bonus if they ask. Narrate WHY at each block — the config is trivial, the reasoning is not.',
+    sections: [
+      {
+        h: '1 · Maven Surefire — the fork topology',
+        say: 'forkCount=4 gives four child JVMs — structural isolation for a legacy suite full of statics. reuseForks=true means Spring boots once per fork, not once per class — without it the startup tax eats the win. And surefire.forkNumber flows in as fork.id: the seed for data partitioning.',
+        code: `<plugin>
+  <groupId>org.apache.maven.plugins</groupId>
+  <artifactId>maven-surefire-plugin</artifactId>
+  <configuration>
+    <forkCount>4</forkCount>              <!-- empirical sweet spot -->
+    <reuseForks>true</reuseForks>         <!-- amortize Spring boot -->
+    <systemPropertyVariables>
+      <fork.id>\${surefire.forkNumber}</fork.id>  <!-- 1..4 -->
+    </systemPropertyVariables>
+    <!-- duration-seeded class ordering feeds dynamic pickup [VERIFY] -->
+    <runOrder>balanced</runOrder>
+  </configuration>
+</plugin>`,
+      },
+      {
+        h: '2 · TestCompanyProvider — fork.id → disjoint range',
+        say: 'The partition function is pure and static: fork N owns companies [1000·N, 1000·N+999], pre-provisioned. No locks, no registry, no runtime coordination — two forks physically cannot collide because the ranges are disjoint by construction. This reuses the app\u2019s own production invariant: every query filters by companyId.',
+        code: `public final class TestCompanyProvider {
+  private static final int POOL = 1000;
+  private static final Deque<String> available = new ArrayDeque<>();
+
+  static {                                    // runs once per fork JVM
+    int forkId = Integer.parseInt(System.getProperty("fork.id"));
+    int start = forkId * POOL;                // disjoint by construction
+    for (int i = start; i < start + POOL; i++) {
+      available.add("test-co-" + i);          // pre-provisioned nightly
+    }
+  }
+
+  public static String checkout() {
+    String id = available.poll();
+    if (id == null) throw new PoolExhaustedException(
+        "fork " + System.getProperty("fork.id") + " exhausted");
+    return id;                                // NOT returned during run;
+  }                                           // nightly job resets pool
+}`,
+      },
+      {
+        h: '3 · Fresh company per scenario — the Cucumber hook',
+        say: 'Inside a fork, tests run sequentially, so the risk is temporal contamination — B inheriting A\u2019s leftovers. Fresh-per-scenario means state starts empty by construction: no cleanup logic to trust, and a crashed test poisons only a company nothing else will touch.',
+        code: `public class IsolationHooks {
+  @Before
+  public void freshCompany(Scenario s) {
+    String companyId = TestCompanyProvider.checkout();
+    TestContext.setCurrentCompany(companyId);   // the old static — now
+    EnvKeys.scopeTo(companyId);                 // safe: one fork, one test
+    log.info("scenario={} fork={} company={}",  // <- count reconciliation
+        s.getName(), System.getProperty("fork.id"), companyId);
+  }
+  // NO @After cleanup by design — crash-safety over cleanup discipline
+}`,
+      },
+      {
+        h: '4 · Ghost detector — the ~500-line sketch',
+        say: 'Cucumber dry-run maps scenarios to step methods without executing; JavaParser walks each method\u2019s call graph, bounded to our packages. A scenario whose ENTIRE reachable set is dead code gets flagged. The tool proposed; owners disposed — 550 confirmed.',
+        code: `// 1. cucumber --dry-run --plugin json  => scenario -> stepDef methods
+// 2. for each step method: BFS the call graph
+Set<String> reachable(MethodDecl root) {
+  Deque<MethodDecl> q = new ArrayDeque<>(List.of(root));
+  Set<String> seen = new HashSet<>();
+  while (!q.isEmpty()) {
+    MethodDecl m = q.poll();
+    for (MethodCallExpr call : m.findAll(MethodCallExpr.class)) {
+      resolve(call).filter(t -> t.pkg().startsWith("com.intuit."))
+                   .filter(t -> seen.add(t.signature()))
+                   .ifPresent(q::add);
+    }
+  }
+  return seen;
+}
+// 3. dead if: target no longer exists | @Deprecated | git-stale
+//    | zero production callers.  Scenario dead if ALL reachable dead.
+// 4. output: report per team -> tech leads approve -> delete.`,
+      },
+    ],
+    close: 'The one config line that carries the interview: forkCount=4 with fork.id injected. Everything else — partitioning, hooks, pools — exists to make that line SAFE. Say that sentence and you have framed the whole project.',
+  },
+
+  'template-sharing': {
+    title: 'Template Sharing — APIs, ordering, cursor pagination',
+    intro: 'This one is API-design territory: a publish orchestration with a dual-write ordering rule, four share scopes, and a cursor-paginated union read. Perfect if they say "design the sharing API."',
+    sections: [
+      {
+        h: '1 · The API surface',
+        say: 'Resources first: a template definition (WAS) and its share metadata (UCS). Publish, update scope, unshare, and the two reads — mine and shared-with-me. offeringId rides every call — the platform\u2019s mandatory partition key. Auth is the IAM ticket; authorId comes from it, never the body.',
+        code: `POST /v1/templates/publish
+  body: { workflowDefinition, shareScope: ALL | ALL_MY_COMPANIES
+          | ALL_MY_CLIENTS | CUSTOM, granularity: USER | REALM,
+          customTargets?: [realmId], maskPii: true }
+  201 { templateId, entityReferenceId }        # ids namespaced sbg:
+
+GET  /v1/templates/shared-with-me?first=20&after=<cursor>
+  200 { edges: [{ node, cursor }],
+        pageInfo: { endCursor, hasNextPage } } # Relay-style
+
+PATCH  /v1/templates/{id}/share   { shareScope, customTargets? }
+DELETE /v1/templates/{id}/share   # unshare, keeps WAS definition
+GET    /v1/templates/mine?first=20&after=<cursor>`,
+      },
+      {
+        h: '2 · Publish orchestration — WAS first, always',
+        say: 'Two writes, no shared transaction — so ordering is a design decision. WAS first: if UCS fails after, the orphan definition is invisible and a sweeper cleans it. The reverse order risks a UCS record pointing at nothing — user-visible corruption. Orphan beats dangling reference.',
+        code: `public PublishResult publish(PublishRequest req, IamTicket ticket) {
+  // 1. the definition — fails? nothing user-visible happened
+  String defId = wasClient.persistDefinition(
+      req.getWorkflowDefinition(), ticket);
+
+  try {
+    // 2. share metadata pointing at it
+    UcsRecord meta = ucsClient.createShare(UcsShare.builder()
+        .offeringId(OFFERING_ID)              // mandatory partition key
+        .entityReferenceId(defId)
+        .scope(req.getShareScope())
+        .granularity(req.getGranularity())
+        .createdBy(ticket.userId())           // audit trio from ticket
+        .createdByCompany(ticket.realmId())
+        .build());
+    return PublishResult.of(defId, meta.getId());
+  } catch (UcsException e) {
+    orphanSweeper.schedule(defId);            // WAS orphan: cleanable
+    throw new PublishFailedException(e);      // user retries whole op
+  }
+}`,
+      },
+      {
+        h: '3 · SHARED_WITH_ME — a union of four predicates',
+        say: 'The hardest read. Each scope contributes a visibility predicate; the result is their union. ALL_MY_CLIENTS is the expensive one — it needs the firm-client relationship graph, which lives outside UCS, so that lookup is resolved first and passed in.',
+        code: `List<Predicate> visibilityFor(Caller c, List<String> myFirms) {
+  return List.of(
+    scope(ALL),                                        // public
+    scope(ALL_MY_COMPANIES).and(sameOwnerUser(c)),     // my other realms
+    scope(ALL_MY_CLIENTS).and(publisherIn(myFirms)),   // firm graph, external
+    scope(CUSTOM).and(targetContains(c.realmId()))     // explicit list
+  );
+}
+// query: WHERE offeringId = :o AND (p1 OR p2 OR p3 OR p4)
+//        ORDER BY createdAt DESC, id DESC   <- stable cursor sort`,
+      },
+      {
+        h: '4 · Cursor pagination — why not offsets',
+        say: 'The list changes while someone pages. Offsets shift under inserts — duplicates or skips. A cursor encodes a stable position: strictly-after THIS (createdAt, id). The compound sort makes it deterministic even when timestamps tie.',
+        code: `// cursor = base64(createdAt + ":" + id)
+Page fetch(String after, int first) {
+  Cursor c = Cursor.decode(after);
+  List<Row> rows = db.query(
+    "... AND (createdAt, id) < (:t, :id) " +   // strictly after cursor
+    "ORDER BY createdAt DESC, id DESC LIMIT :n",
+    Map.of("t", c.t(), "id", c.id(), "n", first + 1));
+  boolean hasNext = rows.size() > first;
+  return Page.of(rows.subList(0, Math.min(first, rows.size())), hasNext);
+}`,
+      },
+    ],
+    close: 'The two sentences that mark this as senior: the ordering argument (orphan over dangling reference) and the pagination argument (cursors because the data moves). Both generalize to any system — say them as principles, not trivia.',
+  },
+
+  'consolidated-email': {
+    title: 'Consolidated Email — execution-time resolution, mode-aware UI',
+    intro: 'Small surface, one deep idea: WHEN a setting is read. Two short blocks of backend logic plus the frontend pattern you actually owned.',
+    sections: [
+      {
+        h: '1 · The preference API',
+        say: 'A per-workflow preference, realm-scoped. Boring on purpose — the design lives in when it is READ, not how it is stored.',
+        code: `GET /v1/realms/{realmId}/workflows/{wfId}/email-preference
+  200 { mode: INDIVIDUAL | CONSOLIDATED, updatedAt }
+
+PUT /v1/realms/{realmId}/workflows/{wfId}/email-preference
+  body: { mode: CONSOLIDATED }
+  200  # takes effect for emails EXECUTED after this moment`,
+      },
+      {
+        h: '2 · Execution-time resolution — the timing insight',
+        say: 'The pipeline resolves the preference at SEND time, not at enqueue or toggle time. Emails already queued when the user flips the toggle would otherwise behave inconsistently — some old mode, some new, by pipeline position. Resolving at execution makes behavior deterministic regardless of when the toggle changes. The general question: at what moment is any setting read, and what is in flight when it changes?',
+        code: `void processDue(EmailTask task) {
+  // resolve NOW — never trust a mode snapshotted at enqueue time
+  Mode mode = prefs.get(task.realmId(), task.workflowId()).mode();
+
+  if (mode == Mode.INDIVIDUAL) {
+    sender.send(render(task));
+  } else {
+    digestBuffer.add(task);        // windowed; flushed as one email
+  }
+}
+// anti-pattern (the bug class this design kills):
+//   enqueue(task, mode = prefs.get(...))   // stale by send time`,
+      },
+      {
+        h: '3 · Mode-aware components, not forks (your slice)',
+        say: 'The CC/BCC, freeform-text, and attachment components were shared with other flows. Forking them for consolidated mode means every future fix lands twice. Mode-aware via props keeps one component, both behaviors, all existing capabilities — class-based React, since this predated hooks.',
+        code: `class EmailComposer extends React.Component {
+  render() {
+    const { mode, recipients, onSend } = this.props;   // mode-aware
+    return (
+      <div>
+        <RecipientFields
+          recipients={recipients}
+          allowPerRecipientCc={mode === 'INDIVIDUAL'}   // behavior
+          showAggregateSummary={mode === 'CONSOLIDATED'} // switches,
+        />                                               {/* one component */}
+        <FreeformText maxLength={mode === 'CONSOLIDATED' ? 500 : 2000} />
+        <AttachmentPicker disabled={mode === 'CONSOLIDATED'} />
+        <SendBar onSend={onSend} />
+      </div>
+    );
+  }
+}`,
+      },
+    ],
+    close: 'If they push for more depth than exists, be honest: my slice was the frontend and the mode-aware refactor; the timing principle is the transferable design lesson, and I can apply it to any settings system they name.',
+  },
+
+  'implicit-ads': {
+    title: 'Implicit Ads — features, training, threshold for recall',
+    intro: 'Academic project, so the code is the honest ML workflow: extract features, train supervised, evaluate with the RIGHT metrics, pick the threshold for recall. Python/sklearn-level is exactly the right register.',
+    sections: [
+      {
+        h: '1 · Feature extraction per segment',
+        say: 'Raw video becomes a feature vector per segment — measurable signals across three modes. Early fusion: one combined vector so the model can learn cross-mode interactions, because intent lives in the combination.',
+        code: `def extract_features(segment):
+    v = visual_signals(segment)       # logo detector, framing
+    a = audio_signals(segment)        # ASR text -> language scores
+    c = context_signals(segment)      # position, flow interruption
+    return [
+        v.brand_logo_present,         # 0/1
+        v.logo_screen_time_sec,       # e.g. 4.2
+        v.product_centered,           # 0..1 prominence
+        a.brand_name_mentioned,       # 0/1
+        a.promotional_language,       # 0..1  ("genuinely the best")
+        a.enthusiasm_tone,            # 0..1
+        c.interrupts_flow,            # 0/1  (cooking paused to pitch)
+        c.segment_position,           # 0..1 within video
+    ]                                  # early fusion: one vector`,
+      },
+      {
+        h: '2 · Train / evaluate — the honest split',
+        say: 'Supervised: labeled segments, train/test split so the reported number is generalization, not memorization. And I report precision, recall, F1 — accuracy alone flatters imbalanced classes, and ad segments are the minority.',
+        code: `X = [extract_features(s) for s in segments]
+y = [s.label for s in segments]              # 1 = implicit ad
+
+X_tr, X_te, y_tr, y_te = train_test_split(
+    X, y, test_size=0.2, stratify=y)         # keep class ratio
+
+model = GradientBoostingClassifier().fit(X_tr, y_tr)
+
+proba = model.predict_proba(X_te)[:, 1]      # probabilities, not labels
+print(classification_report(y_te, proba > 0.5))
+# accuracy ~0.85 — but recall/F1 on the ad class are what mattered`,
+      },
+      {
+        h: '3 · Threshold chosen for recall — the tuned decision',
+        say: 'The threshold is a dial, and I set it from the error costs: a missed ad slips through undisclosed (expensive), a false flag costs a reviewer seconds (cheap). So: lowest threshold that clears the recall target. The budget import tunes the same dial the OPPOSITE way — that contrast is the money sentence.',
+        code: `prec, rec, thresholds = precision_recall_curve(y_te, proba)
+
+TARGET_RECALL = 0.90
+ok = [i for i, r in enumerate(rec[:-1]) if r >= TARGET_RECALL]
+best = max(ok, key=lambda i: prec[i])        # best precision at recall>=.90
+THRESHOLD = thresholds[best]
+
+def flag(segment):                            # inference
+    p = model.predict_proba([extract_features(segment)])[0, 1]
+    return p >= THRESHOLD                     # tuned low -> recall-first`,
+      },
+    ],
+    close: 'Keep the academic frame: "here is the workflow I actually ran" beats pretending it was production. If pushed to model internals, exit cleanly — you reason about ML systems and tradeoffs, you did not implement optimizers.',
+  },
+  'budget-versioning': {
+    title: 'Budget Versioning — entity to API',
+    intro: 'Build order on a whiteboard: entity → edit path → publish (copy-on-write) → invariant → API. The design lives in the schema; start there and narrate.',
+    sections: [
+      {
+        h: '1 · The entity — three axes plus the optimistic lock',
+        say: 'The primary key is composite — (budgetId, revision, companyId) — because one logical budget has many physical rows, one per revision, tenant-scoped. state is what KIND of row, status is which row is authoritative, revision is the snapshot counter. And editSequence with @Version is my optimistic lock — JPA increments it automatically on every update.',
+        code: `@Entity
+@Table(name = "project_budget")
+@IdClass(BudgetKey.class)              // composite key
+public class ProjectBudget {
+  @Id private Long budgetId;
+  @Id private Integer revision;
+  @Id private String companyId;
+
+  @Enumerated(EnumType.STRING)
+  private BudgetState state;           // DRAFT, LOCKED, HIDDEN
+  @Enumerated(EnumType.STRING)
+  private BudgetStatus status;         // ACTIVE, INACTIVE
+
+  @Version
+  private Long editSequence;           // optimistic lock — JPA managed
+
+  @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
+  private List<BudgetLine> lines;
+}
+
+enum BudgetState  { DRAFT, LOCKED, HIDDEN }
+enum BudgetStatus { ACTIVE, INACTIVE }`,
+      },
+      {
+        h: '2 · Repository — reads split by intent',
+        say: 'Reads split by intent: the editor loads the DRAFT; reports and estimates load the ACTIVE LOCKED revision. findMaxRevision computes the next number when publish forks.',
+        code: `public interface ProjectBudgetRepository
+    extends JpaRepository<ProjectBudget, BudgetKey> {
+
+  Optional<ProjectBudget> findByBudgetIdAndCompanyIdAndState(
+      Long budgetId, String companyId, BudgetState state);
+
+  Optional<ProjectBudget> findByBudgetIdAndCompanyIdAndStateAndStatus(
+      Long budgetId, String companyId,
+      BudgetState state, BudgetStatus status);
+
+  @Query("SELECT MAX(b.revision) FROM ProjectBudget b " +
+         "WHERE b.budgetId = :budgetId AND b.companyId = :companyId")
+  Optional<Integer> findMaxRevision(Long budgetId, String companyId);
+}`,
+      },
+      {
+        h: '3 · Edit path — belt AND suspenders concurrency',
+        say: 'Two layers of concurrency protection, on purpose. The explicit syncToken check gives a clean, early rejection with a good error. JPA @Version gives the database-level guarantee: if two requests pass the first check simultaneously, whichever commits second throws OptimisticLockException. Token check is for UX; @Version is for correctness.',
+        code: `@Transactional
+public ProjectBudget updateDraft(Long budgetId, String companyId,
+                                 List<BudgetLine> newLines,
+                                 Long clientSyncToken) {
+  ProjectBudget draft = repo
+      .findByBudgetIdAndCompanyIdAndState(budgetId, companyId, BudgetState.DRAFT)
+      .orElseThrow(() -> new BudgetNotFoundException(budgetId));
+
+  // Layer 1: explicit check — clean early 409 for the client
+  if (!draft.getEditSequence().equals(clientSyncToken)) {
+    throw new StaleBudgetException(draft.getEditSequence(), clientSyncToken);
+  }
+
+  draft.setLines(newLines);
+  // Layer 2: @Version — true race caught at commit
+  return repo.save(draft);
+}`,
+      },
+      {
+        h: '4 · Publish — copy-on-write fork, one transaction',
+        say: 'Publish is copy-on-write: demote the old ACTIVE LOCKED to INACTIVE, compute the next revision, insert a NEW immutable LOCKED row with a DEEP COPY of the draft lines. Flag the deep copy unprompted: copy the reference instead of the data and editing the draft later mutates the supposedly-immutable snapshot — they would share line objects. All three writes in one @Transactional boundary, so a failure never leaves a half-published state. The draft itself is untouched — the user keeps their working copy.',
+        code: `@Transactional
+public ProjectBudget publishBudget(Long budgetId, String companyId,
+                                   Long clientSyncToken) {
+  ProjectBudget draft = loadDraftChecked(budgetId, companyId, clientSyncToken);
+
+  // 1. demote previous active snapshot
+  repo.findByBudgetIdAndCompanyIdAndStateAndStatus(
+        budgetId, companyId, BudgetState.LOCKED, BudgetStatus.ACTIVE)
+     .ifPresent(prev -> { prev.setStatus(BudgetStatus.INACTIVE); repo.save(prev); });
+
+  // 2. next revision number
+  int nextRev = repo.findMaxRevision(budgetId, companyId).orElse(0) + 1;
+
+  // 3. new immutable snapshot — DEEP copy, not a reference
+  ProjectBudget locked = new ProjectBudget();
+  locked.setBudgetId(budgetId);
+  locked.setCompanyId(companyId);
+  locked.setRevision(nextRev);
+  locked.setState(BudgetState.LOCKED);
+  locked.setStatus(BudgetStatus.ACTIVE);
+  locked.setLines(deepCopy(draft.getLines()));   // <-- the guarantee lives here
+  return repo.save(locked);
+}`,
+      },
+      {
+        h: '5 · The invariant',
+        say: 'One hard rule ties it together: LOCKED never becomes DRAFT. A locked revision may already back an estimate a customer has seen — unlocking would shift ground other systems believe is frozen.',
+        code: `public static void validateTransition(BudgetState from, BudgetState to) {
+  if (from == BudgetState.LOCKED && to == BudgetState.DRAFT) {
+    throw new InvalidLockStateException("LOCKED cannot transition to DRAFT");
+  }
+}`,
+      },
+      {
+        h: '6 · API surface — status codes are the contract',
+        say: 'syncToken rides in the body of every mutation; a stale token returns 409 Conflict — not 400, not 500. 409 is semantically exact: valid request, resource changed underneath you, refresh and retry. Getting the status code right is part of the design.',
+        code: `PUT  /companies/{companyId}/budgets/{budgetId}/draft
+     body: { lines: [...], syncToken: 42 }
+     200 { ...budget, editSequence: 43 } | 409 Conflict
+
+POST /companies/{companyId}/budgets/{budgetId}/publish
+     body: { syncToken: 43 }
+     201 { revision: 3, state: LOCKED, status: ACTIVE } | 409
+
+GET  /companies/{companyId}/budgets/{budgetId}?view=draft|active`,
+      },
+    ],
+    close: 'If they ask "is this your real code": this is the core; production had more edge handling and the platform outbox wiring — which I consumed, not built. The three things to hold if all else fails: @Version optimistic locking (and why two layers), deep-copy copy-on-write, one transaction per operation.',
+  },
+
+  'ai-budget-import': {
+    title: 'AI Budget Import — orchestration around QBAI',
+    intro: 'The QBAI GraphQL BFF is given. Your code is the async, human-gated system around it. Build order: state machine → QBAI boundary → start → completion (idempotent) → confidence surfacing → the human gate.',
+    sections: [
+      {
+        h: '1 · State machine + job entity — server-authoritative',
+        say: 'The status lives on the SERVER in an ImportJob — extraction is long-running and async; client state dies with the tab, server state survives it. EXTRACTED and COMPLETED are distinct on purpose: the AI can reach EXTRACTED alone; only a human reaches COMPLETED. That gap is the human-in-the-loop, encoded.',
+        code: `public enum DocumentStatus {
+  NO_DOCUMENT, IN_PROGRESS, EXTRACTED, COMPLETED,
+  EXTRACTION_FAILED, CANCELLED
+}
+public enum ConfidenceTier { MATCH, PARTIAL_MATCH, NO_MATCH }
+
+@Entity
+public class ImportJob {
+  @Id private String jobId;
+  private String budgetId;
+  private String companyId;
+  @Enumerated(EnumType.STRING)
+  private DocumentStatus status;     // the server-side truth
+  private String qbaiJobId;
+  private String failureReason;
+}`,
+      },
+      {
+        h: '2 · The QBAI boundary — consumed, not built',
+        say: 'This interface IS the ownership boundary. Everything intelligent — extraction, embeddings, cosine matching, confidence — lives behind it, in QBAI. I am a client. My job starts when results come back.',
+        code: `// PROVIDED BY QBAI — consumed, not built.
+public interface QbaiExtractionClient {
+  QbaiJobHandle startExtraction(String documentRef, List<String> costCodes);
+  boolean isComplete(String qbaiJobId);
+  QbaiExtractionResult getResults(String qbaiJobId);
+}`,
+      },
+      {
+        h: '3 · Start — return immediately',
+        say: 'Upload creates the job in IN_PROGRESS, kicks off QBAI with the budget cost codes as the matching vocabulary, and returns NOW. Never block a user request on an LLM.',
+        code: `@Transactional
+public ImportJob startImport(String budgetId, String companyId, String docRef) {
+  ImportJob job = ImportJob.create(budgetId, companyId, docRef,
+                                   DocumentStatus.IN_PROGRESS);
+  jobRepo.save(job);
+
+  List<String> codes = budgetService.getCostCodes(budgetId, companyId);
+  job.setQbaiJobId(qbai.startExtraction(docRef, codes).getId());
+  return jobRepo.save(job);       // returns immediately
+}`,
+      },
+      {
+        h: '4 · Completion — one idempotent handler, push OR poll',
+        say: 'One handler, reachable two ways: QBAI pushed event, or the frontend 5-second poll. The idempotency guard matters because both can fire — first one processes, second is a no-op. Push for speed, poll as the safety net so the UI never hangs on a dropped message. Success lands on EXTRACTED — parked for review, NOT in the budget. And the 100-record guardrail bounds a runaway extraction.',
+        code: `@Transactional
+public ImportJob handleExtractionComplete(String jobId) {
+  ImportJob job = jobRepo.findById(jobId).orElseThrow();
+
+  if (job.getStatus() != DocumentStatus.IN_PROGRESS) return job; // idempotent
+
+  try {
+    QbaiExtractionResult r = qbai.getResults(job.getQbaiJobId());
+    if (r.getLines().size() > 100) {                 // guardrail
+      job.fail("Exceeds max 100 records");
+      return jobRepo.save(job);
+    }
+    job.setExtractedLines(map(r));
+    job.setStatus(DocumentStatus.EXTRACTED);          // parked, not committed
+  } catch (QbaiException e) {
+    job.fail(e.getMessage());
+  }
+  return jobRepo.save(job);
+}
+
+// Poll endpoint — the fallback path can trigger completion too
+public ImportJob getStatus(String jobId) {
+  ImportJob job = jobRepo.findById(jobId).orElseThrow();
+  if (job.getStatus() == DocumentStatus.IN_PROGRESS
+      && qbai.isComplete(job.getQbaiJobId())) {
+    return handleExtractionComplete(jobId);
+  }
+  return job;
+}`,
+      },
+      {
+        h: '5 · Confidence surfacing — attention where it matters',
+        say: 'needsReview drives the AiSparkles marker: only PARTIAL_MATCH and NO_MATCH rows get flagged. Re-verifying everything would erase the time savings; the design routes limited human attention to exactly where judgment adds value.',
+        code: `public boolean needsReview(ExtractedLine line) {
+  return line.getConfidence() == ConfidenceTier.PARTIAL_MATCH
+      || line.getConfidence() == ConfidenceTier.NO_MATCH;
+}`,
+      },
+      {
+        h: '6 · Accept — the human gate',
+        say: 'The ONLY path into the budget, and only reachable from EXTRACTED — the status guard IS the human-in-the-loop in code. And I write reviewedLines, the human-approved (possibly corrected) version, never QBAI raw output. The AI suggested; the human decided; the human decision is what touches money.',
+        code: `@Transactional
+public ImportJob acceptImport(String jobId, List<ExtractedLine> reviewedLines) {
+  ImportJob job = jobRepo.findById(jobId).orElseThrow();
+
+  if (job.getStatus() != DocumentStatus.EXTRACTED) {
+    throw new InvalidStatusException("accept only from EXTRACTED");
+  }
+
+  budgetService.addLines(job.getBudgetId(), job.getCompanyId(), reviewedLines);
+  job.setStatus(DocumentStatus.COMPLETED);
+  return jobRepo.save(job);
+}`,
+      },
+      {
+        h: '7 · GraphQL surface — the absent mutation is the point',
+        say: 'Three mutations and a status query. Note what is MISSING: there is no auto-accept mutation. By design, no API path writes AI output to the budget without a human. That absence is a design decision, not an omission.',
+        code: `type Mutation {
+  startBudgetImport(budgetId: ID!, companyId: ID!, documentRef: String!): ImportJob
+  acceptBudgetImport(jobId: ID!, reviewedLines: [ExtractedLineInput!]!): ImportJob
+  cancelBudgetImport(jobId: ID!): ImportJob
+}
+type Query { importJobStatus(jobId: ID!): ImportJob }`,
+      },
+    ],
+    close: 'Three things to hold if all else fails: async with server-authoritative state (push + poll fallback), EXTRACTED-vs-COMPLETED as the human gate writing the human version, and the QBAI boundary — they built the intelligence, you built what makes it safe on money.',
+  },
+
+  'cms-migration': {
+    title: 'CMS Resiliency — reconcile before compensate, in code',
+    intro: 'The shape they want to see: timeout treated as UNKNOWN, a reconciliation read gating the compensation, idempotency on projectId. Pseudocode-level Java is enough; narrate the failure logic.',
+    sections: [
+      {
+        h: '1 · The orchestration — reconcile gates compensate',
+        say: 'The whole insight is in the catch block. A timeout is not failure — it is unknown. So before any corrective action, read CMS by correlation ID to establish ground truth: if the write actually landed, roll FORWARD (blind rollback of a success would manufacture the opposite inconsistency); only if it truly failed, compensate.',
+        code: `public SyncResult syncProjectToCms(ProjectChange change) {
+  String correlationId = change.getProjectId();   // idempotency key too
+
+  try {
+    CmsResult r = cmsClient.upsertSubCustomer(change, correlationId);
+    return SyncResult.success(r);
+
+  } catch (TimeoutException | RemoteUnknownException e) {
+    // UNKNOWN, not failure. Reconcile before compensate.
+    Optional<CmsRecord> actual =
+        cmsClient.findByCorrelationId(correlationId);
+
+    if (actual.isPresent() && matches(actual.get(), change)) {
+      return SyncResult.rolledForward(actual.get());  // it DID succeed
+    }
+    compensate(change);                                // it truly failed
+    return SyncResult.compensated();
+  }
+}`,
+      },
+      {
+        h: '2 · Per-operation compensation',
+        say: 'Undo is not one thing. Create compensates by soft-delete (keep the record that it briefly existed); update by reverting to the prior version — which is why versioning matters; inactivate by undelete. Each compensation is idempotent itself, because compensations get retried too — once inline, then 3x async with bounded timeouts.',
+        code: `private void compensate(ProjectChange change) {
+  switch (change.getType()) {
+    case CREATE     -> projectRepo.softDelete(change.getProjectId());
+    case UPDATE     -> projectRepo.revertToPriorVersion(change.getProjectId());
+    case INACTIVATE -> projectRepo.undelete(change.getProjectId());
+  }
+}`,
+      },
+      {
+        h: '3 · What CMS must expose for this to work',
+        say: 'Two capabilities make reconciliation possible: an idempotent write keyed on the correlation ID (a duplicate returns the original result, never double-applies), and a cheap indexed read by that ID. Compensation is just the write API called in reverse with a new key.',
+        code: `mutation upsertSubCustomer(input: {
+  idempotencyKey: "<projectId>",
+  name, parentCustomerId, status, ...
+}) : SubCustomerResult
+
+query getSubCustomerByCorrelation(correlationId: ID!)
+  : SubCustomerResult | null    # indexed, side-effect free`,
+      },
+    ],
+    close: 'Vocabulary to drop while writing: this is an orchestrated saga with reconciliation gating compensation — not 2PC, because CMS is a shared multi-tenant service that will not hold locks between prepare and commit. Downstream fanout is async domain events via the platform outbox (consumed, not built). Sync failure reduction: ~95% vs the drift-detector baseline.',
+  },
+
+  'api-design-method': {
+    title: 'API design — the 6-step method (any question)',
+    intro: 'Same sequence every time, narrated aloud. Interviewers score the process as much as the output.',
+    sections: [
+      {
+        h: 'The six steps',
+        say: 'Clarify before designing — 90 seconds of scope questions is the biggest differentiator. Then nouns become paths, verbs become methods, shapes show data thinking, cross-cutting concerns separate real answers from toys, and the hard edges show you will own it in production.',
+        code: `1 CLARIFY   2-4 scope questions (nesting? permissions? scale? realtime?)
+2 NOUNS     resources → URL paths
+3 VERBS     CRUD per resource → POST / GET / PATCH / DELETE
+4 SHAPES    request body + response + status codes for key endpoints
+5 CROSS-CUTTING
+    auth vs authz · cursor pagination (not offset — data moves)
+    409 vs 403 vs 404 · idempotency key on create/charge · validation
+6 HARD EDGES  name 1-2: soft-delete semantics, N+1 on lists, races`,
+      },
+      {
+        h: 'Worked mini-example: project comments',
+        say: 'Threaded one level, author-or-admin edits, thousands per project → pagination. A reply is just a comment with a parentId — one resource, no /replies endpoint. authorId comes from the auth context, never the body — otherwise anyone posts as anyone.',
+        code: `POST   /projects/{id}/comments        create (parentId nullable)
+GET    /projects/{id}/comments?limit=20&cursor=xyz   cursor paginated
+GET    /projects/{id}/comments/{cid}   one + replies
+PATCH  /projects/{id}/comments/{cid}   edit (author|admin → else 403)
+DELETE /projects/{id}/comments/{cid}   soft-delete ("comment removed"
+                                       so replies keep context)`,
+      },
+      {
+        h: 'The five reusable senior signals',
+        say: 'Three of these come straight from your real projects — you are naming patterns you already shipped.',
+        code: `1 "The ID comes from auth context, not the request body"
+2 "Cursor pagination, because the data changes under you"   (UCS)
+3 "Idempotency key so a retry cannot double-apply"          (CMS)
+4 "Soft-delete so referencing data stays coherent"          (Versioning)
+5 "403 = authenticated-but-forbidden, 404 = not-exists —
+   and sometimes 404 instead of 403 to avoid leaking existence"`,
+      },
+    ],
+    close: 'Narrate the method as you go. A clear spoken process reads as "this person will make good API decisions on problems I have not thought of yet" — which is exactly what they are buying.',
+  },
+};
+
+/* ============================================================================
+ * SYSTEM DESIGNS v2 — "design your own project", L4/SDE2 bar
+ * Every design: 60-second opener → requirements → scale numbers → HLD →
+ * flow → data model / API → LLD → defended tradeoffs → failure walkthrough →
+ * evolution. This is the order strong candidates actually speak in.
+ * ========================================================================== */
+
+const SYSTEM_DESIGNS = {
+  'traffic-replay': {
+    title: 'Traffic Capture & Replay',
+    goal: 'Validate risky backend changes against real production traffic with provably zero customer impact.',
+    openingScript: 'Let me frame the problem first: we need production-scale behavioral truth about a risky change — DB engine swap, ORM upgrade — without production-scale risk. Tests cannot reproduce real traffic shape. So the design is: capture real traffic passively, replay it against a parallel stack running the change, and compare three things — responses, written data, latency. My north-star invariant: the customer path is untouchable, and the replay path must be HARMLESS BY CONSTRUCTION, not by care. Every component I draw follows from that invariant.',
+    scale: [
+      '~100K customers/day on the service; capability >1M requests/day replayed',
+      '1M req/day ≈ 12 rps average, bursty to ~10x at peak — Kafka absorbs the burst, replay consumes at its own pace',
+      'Capture overhead measured ~10% on the pod — budgeted, not assumed',
+      'Parity check cost: tens of rows per request (BFS subgraph), never table scans on the 32TB store',
+    ],
+    requirements: {
+      functional: [
+        'Capture prod HTTP requests + responses without app code changes',
+        'Replay against parallel stack; support per-workflow onboarding config',
+        'Compare response parity, data parity, latency percentiles (TP90/95/99)',
+        'Load replay at 0.5x/2x/3x by compressing inter-arrival gaps',
+      ],
+      nonFunctional: [
+        'Zero customer impact — structural guarantee',
+        'Zero downstream side effects from replays — structural guarantee',
+        'Plaintext never leaves the pod; encrypted on the bus (IDPS) + TLS in transit',
+        'Passive validator: may miss a regression, may never cause one',
+      ],
+    },
+    hld: {
+      diagram: `PROD POD (customer path — untouchable)
+┌──────────────────────────────────────────┐
+│ LB → Nginx#1 :9443 (TLS terminate)       │
+│         │ plaintext (pod-internal only)  │
+│         ├──▶ GoReplay sidecar ─────────────▶ Kafka
+│         ▼                                │   topic: captured-traffic
+│      Nginx#2 :8443 (re-encrypt) → App    │   key: transaction_id
+└──────────────────────────────────────────┘   (IDPS-encrypted payloads)
+                                                    │
+                      ┌─────────────────────────────┘
+                      ▼
+              Pairing consumer (req+resp meet: same key → same partition)
+                      │ ReplayPair
+                      ▼
+        ┌──────────────────────────────┐     writes    ┌──────────┐
+        │ PARALLEL STACK (the change)  │──Envoy egress─▶│ Wiremock │
+        │ own cloned DB (weekly CoW    │     reads      └──────────┘
+        │ snapshot, NO replication)    │──passthrough──▶ real reads
+        └──────────────┬───────────────┘
+                       ▼
+        Validator: response diff · data-parity BFS · latency percentiles
+                       ▼
+                 Diff report (pre-release, not an incident)`,
+      components: [
+        { n: 'Capture sidecar (GoReplay + Nginx sandwich)', r: 'Passive tap on pod-internal plaintext. Own process = own failure domain: sidecar death is invisible to customers. This is where "no app changes" and "no plaintext outside the pod" are both satisfied at once.' },
+        { n: 'Kafka bus', r: 'Decouples capture rate from replay rate (absorbs bursts); partition key transaction_id makes request/response pairing trivial — same key, same partition, one consumer, in order.' },
+        { n: 'Parallel stack + Envoy/Wiremock', r: 'Runs the risky change. Egress proxy routes mutating methods to Wiremock, reads pass through. The production write path does not exist from this stack — blast radius zero by construction.' },
+        { n: 'Cloned DB (weekly CoW snapshot)', r: 'Replay must own ALL writes to its DB or rows cannot be attributed. No replication is deliberate; staleness is safe because compared rows are replay-created inside a time window.' },
+        { n: 'Validator + its own store', r: 'Pairs, replays, compares, reports. Store is append-heavy with key lookups by transaction_id and TTL — pick storage from the access pattern, not fashion.' },
+      ],
+    },
+    flow: [
+      'Customer request → Nginx#1 decrypts → GoReplay copies → Nginx#2 re-encrypts → app answers customer (unchanged path, ~10% pod overhead)',
+      'Request event + response event published to Kafka keyed by transaction_id',
+      'Pairing consumer joins them (ordering per key guaranteed) → ReplayPair',
+      'Replayer fires the request at the parallel stack; Envoy fakes writes, passes reads',
+      'Validator: diff responses (normalize variable fields) · BFS the FK subgraph from (tenant_id, parent_record_id) on both DBs and compare · compare TP90/95/99 per workflow',
+      'Findings land in a diff report reviewed before release',
+    ],
+    api: `# Onboarding config per workflow (how a team joins the platform)
+workflow: invoices.create
+  rootTable: invoice
+  followEdges: [invoice→invoice_line, invoice→tax_entry]
+  ignoredFields: [id, created_at, updated_at, trace_id]
+  timeWindowMs: 5000
+  latencyToleranceP99: 0.10`,
+    lld: [
+      { h: 'Data parity BFS (the algorithmic core)', points: [
+        'Schema IS a graph: rows = nodes, FKs = edges; one write touches a small connected subgraph off one parent record',
+        'BFS by LEVEL — each level is ONE SQL query (WHERE fk IN frontier); no in-memory graph ever exists',
+        'Bounded by time window ± config and per-workflow table list; compare row-sets after normalizing generated IDs/timestamps',
+        'Cost proportional to what the request touched: tens of rows against a 32TB database',
+      ]},
+      { h: 'Why pairing is trivial (Kafka mechanics)', points: [
+        'hash(transaction_id) % partitions → same partition; one consumer owns a partition; order preserved within it',
+        'So response-before-request is impossible at the consumer; orphaned requests TTL out (their response was never captured)',
+      ]},
+      { h: 'Security model', points: [
+        'Trust boundary = pod boundary (physical). Plaintext exists only between Nginx#1 and Nginx#2',
+        'Bus payloads IDPS-encrypted — TLS protects transit, IDPS protects the message at rest on the bus',
+      ]},
+    ],
+    tradeoffs: [
+      { choice: 'Sidecar capture', over: 'in-app capture middleware', why: 'In-app puts capture bugs in the customer critical path and couples to release cycles. Sidecar has an independent failure domain — it can die silently.' },
+      { choice: 'Mock writes at the network layer (Envoy)', over: 'mocking in application code', why: 'Code-level mocks depend on discipline; a missed mock double-charges a customer. Network-level means the write path physically does not exist. Guarantee over convention.' },
+      { choice: 'Weekly CoW snapshot clone', over: 'live replication to the parallel DB', why: 'Replication injects writes the replay does not own, breaking row attribution. Staleness is harmless: every compared row is replay-created inside the request time window.' },
+      { choice: 'Kafka between capture and replay', over: 'direct HTTP forwarding (tee)', why: 'A tee couples replay availability to the customer path and drops traffic when replay is down. The bus buffers bursts, decouples rates, and allows replay-later/load-replay.' },
+      { choice: 'Percentiles per workflow', over: 'average latency', why: 'Averages hide tail regressions; the tail is where customers hurt. TP99 catching a 2x regression on one workflow was the whole point.' },
+    ],
+    failures: [
+      { scenario: 'GoReplay sidecar crashes', handling: 'Capture stops; customers unaffected (independent process). Gap in captured traffic is acceptable — the platform is a sampler, not an auditor. Alert + restart.' },
+      { scenario: 'Kafka consumer lag spikes', handling: 'Replay falls behind real time — by design that is fine; pairs carry original timestamps and the time-window parity still works. Scale consumers; partitions rebalance whole partitions so pairing never breaks.' },
+      { scenario: 'Parallel stack writes leak attempt', handling: 'Cannot reach production: mutating routes terminate at Wiremock. Worst case a stub is missing → replay request fails → shows in diff report as replay-side error, never as a customer effect.' },
+      { scenario: 'Parity false positives flood the report', handling: 'Almost always a missing ignoredField (new generated column) or wrong time window — fix the workflow config, not the engine. Config-per-workflow is what keeps signal high.' },
+    ],
+    evolution: [
+      '10x traffic: partitions + consumer instances scale linearly; replay is embarrassingly parallel by transaction_id',
+      'More teams: onboarding config is the product — the platform framing (Oracle exit, Hibernate, MySQL→Postgres are just clients)',
+      'Beyond HTTP: same pattern for event-driven flows — capture consumer-side, replay into a shadow consumer group',
+    ],
+    presentTip: 'Draw the prod pod first and put a wall around it — say "everything left of this wall is untouchable." Then derive each right-side box from an invariant. Interviewers remember candidates who design from invariants, not inventories.',
+  },
+
+  'cms-migration': {
+    title: 'Cross-Service Project Sync (CMS Resiliency)',
+    goal: 'Keep one concept — a project — consistent across two services that share no transaction, under partial failure.',
+    openingScript: 'The shape of the problem: a customer project is TWO records — an IPM project and a CMS sub-customer — in services with separate databases. No shared transaction exists, so the design question is: what happens when the second write fails, times out, or lies? The legacy system got this wrong twice — two racing sync paths, and timeouts treated as failures — and manufactured the drift it was meant to prevent. My design has three pillars: one authoritative path, reconcile-before-compensate on timeouts, and idempotency everywhere.',
+    scale: [
+      'Every project create/update/inactivate crosses the boundary — user-facing latency budget applies to the sync call',
+      'Result: ~95% reduction in cross-service sync failures vs drift-detector baseline',
+      'Retry budget: 1 inline reconcile + 3 async retries with bounded timeouts (chaos-tested at 3ms forced timeouts)',
+    ],
+    requirements: {
+      functional: [
+        'Project create/update/inactivate reflected in both services',
+        'Deterministic outcome for the user action (success, retriable, or compensated)',
+        'Downstream consumers (STS/ETS/FTS/QBTime) notified of changes',
+      ],
+      nonFunctional: [
+        'No drift under timeout/partial failure',
+        'Retries never double-apply (idempotency)',
+        'No 2PC — CMS is shared multi-tenant and will not hold locks',
+        'Monolith sync paths fully decommissioned (forcing function)',
+      ],
+    },
+    hld: {
+      diagram: `User action (sync path — user waits)
+      │
+      ▼
+┌───────────────┐  1. local write        ┌──────────────────────┐
+│      IPM      │──────────────┐         │         CMS          │
+│  orchestrator │  2. GraphQL upsert     │  (shared multi-      │
+│               │──idempotencyKey=───────▶  tenant service)     │
+│               │   projectId            │                      │
+│               │◀─3. on timeout: read───│  getByCorrelationId  │
+│               │   by correlation       │  (indexed, no side   │
+└──────┬────────┘   → roll fwd / comp.   │   effects)           │
+       │ same txn                        └──────────────────────┘
+       ▼
+  Outbox table ──platform publisher──▶ Kafka ──▶ STS / ETS / FTS / QBTime
+  (event written atomically              (async domain events;
+   with the state change)                 my slice: STS consumer)`,
+      components: [
+        { n: 'IPM orchestrator', r: 'Drives the saga: local write, sync CMS call, timeout classification, reconciliation read, per-operation compensation. The resiliency slice I built.' },
+        { n: 'CMS GraphQL API', r: 'THE single authoritative write path (v4 fallback event path deprecated — killing the dual-path race). Exposes idempotent upsert + read-by-correlation.' },
+        { n: 'Transactional outbox (platform, consumed)', r: 'Event row written in the same DB transaction as state; platform publisher delivers to Kafka. Removes the write-then-publish race without me building bus infrastructure.' },
+        { n: 'Downstream consumers', r: 'Async, eventually consistent — they need "a project changed," not a vote in the user\u2019s transaction.' },
+      ],
+    },
+    flow: [
+      'User saves → IPM local write + synchronous CMS upsert (idempotencyKey = projectId)',
+      'Success → respond to user; outbox event fans out async',
+      'Timeout → classify as UNKNOWN → read CMS by correlation ID',
+      'Record found & matches → roll FORWARD: the write landed; align local state, done',
+      'Absent → compensate per operation: create→soft-delete · update→revert-to-prior-version · inactivate→undelete; compensations idempotent, then async retries',
+      'Consistency monitor watches both sides in near-real-time (provenance of the 95%)',
+    ],
+    api: `mutation upsertSubCustomer(input: {
+  idempotencyKey: "<projectId>",     # duplicate ⇒ original result
+  name, parentCustomerId, status ...
+}): SubCustomerResult
+
+query getSubCustomerByCorrelation(correlationId: ID!)
+  : SubCustomerResult | null         # indexed, side-effect-free
+# Compensation = the write API driven in reverse with a fresh key.`,
+    lld: [
+      { h: 'Timeout classification (the heart)', points: [
+        'Two Generals: request-lost vs response-lost vs still-processing are indistinguishable at the caller',
+        'Therefore timeout = UNKNOWN. Acting on unknown as if it were failure is how the legacy system manufactured reverse-drift',
+        'Ground truth is one indexed read away — that read is what gates every compensation',
+      ]},
+      { h: 'Idempotency design', points: [
+        'Key = projectId: already unique, meaningful, and stable across retries — no key-distribution infrastructure needed',
+        'CMS contract: same key ⇒ return original result, never re-execute',
+        'Compensations are idempotent too — they get retried as well',
+      ]},
+      { h: 'Sync/async split', points: [
+        'Sync where the user is waiting on a promise; async where consumers need eventual notification',
+        'Outbox kills the "DB committed but event never published" race by making event emission part of the transaction',
+      ]},
+    ],
+    tradeoffs: [
+      { choice: 'Orchestrated saga (IPM drives)', over: 'choreographed events between IPM and CMS', why: 'The user is synchronously waiting; orchestration gives a deterministic answer and one place to reason about compensation. Choreography shines for fan-out — which is exactly where I DO use events (downstream).' },
+      { choice: 'Reconcile-then-compensate', over: 'compensate immediately on failure', why: 'Blind rollback of a call that actually succeeded creates the opposite inconsistency. The reconciliation read converts UNKNOWN into a fact before any destructive action.' },
+      { choice: 'Idempotency key = projectId', over: 'generated UUID per attempt', why: 'Per-attempt keys make every retry look like a NEW operation — the exact double-create bug idempotency exists to kill. The natural business key is stable across retries.' },
+      { choice: 'One authoritative path', over: 'primary + fallback path', why: 'The fallback WAS the bug: two writers, different orders, no arbiter. Redundancy in write paths is not resilience; it is a race condition with good intentions.' },
+      { choice: 'No 2PC', over: 'distributed transaction', why: 'Prepare/commit requires participants to hold locks; a shared multi-tenant CMS will not sign that contract. Organizational constraint, not just technical taste.' },
+    ],
+    failures: [
+      { scenario: 'CMS down hard (not timeout — connection refused)', handling: 'Fail fast, mark project PENDING_SYNC, async retry with backoff; user sees success-with-sync-pending semantics [VERIFY exact UX]. No compensation needed — nothing ambiguous happened.' },
+      { scenario: 'Timeout, and the reconciliation read ALSO times out', handling: 'Stay in UNKNOWN: schedule async reconciliation; never compensate on unknown. Bounded retries → alert. This is the honest residual inside the "95%, not 100%."' },
+      { scenario: 'Duplicate delivery of the outbox event', handling: 'Consumers are idempotent on (projectId, version/eventId) — at-least-once delivery is the platform contract, dedupe is the consumer\u2019s job (my STS consumer does exactly this).' },
+      { scenario: 'Compensation itself fails', handling: 'Compensations are idempotent and retried (3x async, bounded timeouts, chaos-tested via forced 3ms timeouts → RestClientException). Exhaustion → dead-letter + alert + consistency monitor keeps score.' },
+    ],
+    evolution: [
+      'More downstream consumers: zero orchestrator changes — they subscribe to the same domain events',
+      'Multi-entity sync (projects + sub-jobs): same saga skeleton, compensation table grows per operation type',
+      'If CMS ever offers async ack: the sync leg could become submit+confirm, keeping the same reconciliation spine',
+    ],
+    presentTip: 'Draw the two services and write "NO SHARED TXN" between them before anything else. Then narrate the timeout branch slowly — reconcile-before-compensate spoken clearly is the single highest-signal moment this design offers.',
+  },
+
+  'test-parallelization': {
+    title: 'Parallelized Integration Test Suite',
+    goal: 'Cut CI wall-clock ~70% on a legacy 10K-scenario suite via process-level parallelism — without a thread-safety refactor.',
+    openingScript: 'The bottleneck was serialization: 10,000 I/O-bound scenarios in one JVM, one at a time, ~10 minutes per push. Two constraints shape everything: the suite is full of legacy static state — so THREAD parallelism would surface years of unsafe assumptions as flakes — and all workers share one test database. So the design is: process-level isolation via JVM forks for memory, and tenant-level partitioning via companyId ranges for data. Both isolations are structural — enforced by the OS and by the schema — not by asking test authors to be careful.',
+    scale: [
+      '10K+ scenarios, ~2,500 per fork at forkCount=4',
+      'Fork sweep: 2→~5.5m · 4→~3.1m · 6→~2.9m (DB pressure) · 8→~3.4m regression [VERIFY]',
+      'Company pool: 1,000 pre-provisioned per fork, fresh one per scenario, nightly reset',
+      'Flake rate after hardening: <0.2% [VERIFY]; 550 ghost scenarios removed',
+    ],
+    requirements: {
+      functional: [
+        'Same scenario set, same pass/fail semantics, ~1/3 wall-clock',
+        'Deterministic worker isolation (memory + data)',
+        'Balanced distribution; merged reporting; stalled-fork detection',
+      ],
+      nonFunctional: [
+        'Zero changes to legacy one-test-at-a-time assumptions',
+        'Shared DB must survive 4x concurrency without cross-talk',
+        'CI flake rate must not regress',
+      ],
+    },
+    hld: {
+      diagram: `Maven Surefire parent (forkCount=4, reuseForks=true)
+ │  assigns test classes: duration-seeded dynamic pickup
+ │  injects -Dfork.id=N · heartbeat + bounded output per fork
+ │
+ ├─ Fork JVM 1 ─ Spring ctx ─ seq scenarios ─ companies 1000-1999 ─┐
+ ├─ Fork JVM 2 ─ Spring ctx ─ seq scenarios ─ companies 2000-2999 ─┤
+ ├─ Fork JVM 3 ─ Spring ctx ─ seq scenarios ─ companies 3000-3999 ─┼─▶ ONE
+ └─ Fork JVM 4 ─ Spring ctx ─ seq scenarios ─ companies 4000-4999 ─┘  test DB
+      │ each scenario: fresh company from fork pool                (companyId-
+      ▼                                                             scoped
+ results via pipes → parent merges → CI report                     visibility)
+
+ offline: ghost detector (dry-run → call-graph walk) → owner review`,
+      components: [
+        { n: 'Surefire parent', r: 'Fork lifecycle, class assignment (duration-seeded dynamic pickup), report merge, and — after the war story — heartbeat + bounded output to kill stalled forks deterministically.' },
+        { n: 'Fork JVMs (4)', r: 'Own heap, statics, Spring context each. Cross-fork memory isolation enforced by the OS. Sequential inside, parallel across; wall-clock ≈ slowest fork.' },
+        { n: 'TestCompanyProvider', r: 'fork.id → disjoint pre-provisioned company range; checkout() per scenario; used IDs not recycled mid-run; nightly reset job.' },
+        { n: 'Env-key layer', r: 'Per-fork namespace for flags/config overrides — forks cannot flip each other\u2019s switches.' },
+        { n: 'Ghost detector (offline)', r: 'Cucumber --dry-run → step defs → JavaParser call-graph BFS → dead-code flags → tech-lead approval. Tool proposes, owners dispose.' },
+      ],
+    },
+    flow: [
+      'CI stage starts → 4 forks boot Spring in parallel (aggregate startup ≈ one boot thanks to parallelism + reuseForks)',
+      'Fork picks next test class (dynamic) → per scenario: checkout fresh company → run → log scenario+fork+company (count reconciliation)',
+      'Results stream to parent over pipes → merged report → PR gate',
+      'Nightly: reset used companies; refresh duration seed data',
+    ],
+    dataModel: `-- isolation rides the app's own production invariant:
+-- every table is companyId-scoped, every query filters on it
+SELECT ... FROM invoices WHERE company_id = :ctx  -- ctx ∈ fork's range
+-- fork ranges disjoint by construction ⇒ disjoint visibility, zero locks`,
+    lld: [
+      { h: 'Two isolation layers, precisely', points: [
+        'Cross-fork memory: OS process boundary — fork 1\u2019s statics are physically different variables from fork 2\u2019s',
+        'Cross-fork data: disjoint companyId ranges — same tables, non-intersecting row visibility',
+        'Intra-fork: sequential + fresh-company-per-scenario — temporal contamination dies with no cleanup logic to trust; crash-safe by construction',
+      ]},
+      { h: 'Why 4 forks (resource math)', points: [
+        '4 ≈ CPU near-saturation with DB headroom on the CI agent',
+        '8 regressed: context-switch thrash + halved per-fork startup amortization + ~160 pooled connections queuing inside the DB (slow-query symptoms)',
+        'Rule to say out loud: parallelism helps until the first shared resource saturates',
+      ]},
+      { h: 'Discipline rules', points: [
+        'No DDL in tests — CREATE INDEX/ALTER takes table locks that stall every fork; migrations run once, pre-fork',
+        'Condition-based waits only — Thread.sleep fails under CPU contention and was a top flake source',
+      ]},
+    ],
+    tradeoffs: [
+      { choice: 'JVM forks', over: 'Cucumber thread parallelism', why: 'Threads share the heap; the legacy suite\u2019s statics become race conditions with the worst failure mode — intermittent CI-only flakes — and fixing that is a multi-month cross-team refactor. Forks buy structural isolation for RAM + startup.' },
+      { choice: 'companyId range partitioning', over: 'one DB per fork', why: 'Reuses the production tenancy invariant at zero infra cost and stays faithful to prod topology. Per-fork DBs become right at ~8-12 forks — named as evolution, not day one.' },
+      { choice: 'Fresh company per scenario', over: 'shared company + cleanup hooks', why: 'Cleanup-based isolation silently poisons the next test when cleanup bugs or a test crashes pre-teardown. Fresh-per-scenario is empty-by-construction and crash-safe.' },
+      { choice: 'Duration-seeded dynamic pickup', over: 'static round-robin', why: 'Wall-clock = slowest fork; round-robin can dump every slow class on one fork. Seeding + dynamic pickup keeps forks within ~15% of optimal.' },
+      { choice: 'reuseForks=true', over: 'fresh JVM per class', why: 'Per-class JVM+Spring boot (20-30s) would eat the entire win. Reuse is exactly why the isolation layers had to be airtight — a reused JVM carries state forward.' },
+    ],
+    failures: [
+      { scenario: 'Fork hangs at 99% (~1 in 15 runs)', handling: 'Root cause was a pipe-buffer deadlock: fork flooding stdout at shutdown while the parent waited. Fix: bounded fork output + parent heartbeat that kills a stalled fork deterministically. Lesson: parallelism adds coordination races with the supervising infra — bugs move up a layer. [VERIFY details]' },
+      { scenario: 'Company pool exhausted mid-run', handling: 'Sized generously (pool ≥ per-fork scenario demand); hot-reset fallback existed and was never needed. Fail loudly with fork id — never silently reuse a dirty company.' },
+      { scenario: 'Flake spike after enabling parallelism (~15%)', handling: 'Clustered by scenario on a flake dashboard: ordering assumptions (dynamic assignment changed order), sleep-based waits, partitioning gaps. Fixed root causes; quarantine lane for repeat offenders. Retro: build the dashboard BEFORE the change.' },
+      { scenario: 'Report counts disagree with baseline', handling: 'Not "parallel ran extra tests" — independent per-scenario logging exposed the old reporter silently under-counting early failures for years, and led to the 550 ghost scenarios (deleted-code tests still executing). Reconciliation instrumentation is what made the change trustworthy.' },
+    ],
+    evolution: [
+      '~10x scenarios: per-fork databases at 8-12 forks (the DB is the first saturating resource)',
+      'Past that: fix the test pyramid — more unit/contract tests, fewer full-stack scenarios; the suite becomes the problem, not the runner',
+      'Duration data → detect newly-slow tests as a regression signal, not just a scheduling input',
+    ],
+    presentTip: 'Draw the four forks as separate boxes each containing "own statics · own Spring" — the picture makes structural isolation obvious before you say a word. Then shade one DB into four colored companyId bands. Two images carry the design; the fork-sweep numbers carry the empiricism.',
+  },
+
+  'budget-versioning': {
+    title: 'Budget Versioning',
+    goal: 'Preserve full budget history while keeping exactly one authoritative version, under concurrent editing, on money.',
+    openingScript: 'The tension: accountants need history — what did we originally plan? — while invoices and reports need ONE authoritative current budget. Keep only the latest and you lose auditability; keep everything naively and every read must guess which version is real. My design: a mutable DRAFT for the working copy, immutable LOCKED snapshots created copy-on-write at publish, three orthogonal axes (state, status, revision) so authority is never ambiguous, and optimistic locking so concurrent editors can never silently destroy each other\u2019s work.',
+    scale: [
+      'Grid editing up to ~3,500 rows per budget [VERIFY] — versions must mark PUBLISHES, not keystrokes',
+      'History growth bounded by publish events; reads are two indexed point queries (DRAFT / ACTIVE LOCKED)',
+    ],
+    requirements: {
+      functional: [
+        'Editable working copy; publish = immutable snapshot; full history queryable',
+        'Exactly one ACTIVE authority at any moment',
+        'Concurrent editors detected with a clean conflict UX (409 + refresh)',
+      ],
+      nonFunctional: [
+        'Financial correctness — customer-facing money',
+        'Locked history immutable forever (downstream estimates reference it)',
+        'No long-held DB locks (browser tabs stay open for hours)',
+      ],
+    },
+    hld: {
+      diagram: `Editor UI ── draft + syncToken ──▶ ┌────────────────┐
+Reports / Estimates ── ACTIVE ────▶ │ Budget service │
+                                    └───────┬────────┘
+                                            ▼
+              project_budget  PK(budgetId, revision, companyId)
+   ┌─────────────────────────────────────────────────────────┐
+   │ rev 0 DRAFT  ACTIVE-ish (working copy, mutated in place)│
+   │ rev 1 LOCKED INACTIVE   (history)                       │
+   │ rev 2 LOCKED INACTIVE   (history)                       │
+   │ rev 3 LOCKED ACTIVE ◀── the authority for all reads     │
+   └─────────────────────────────────────────────────────────┘
+   publish: demote rev3→INACTIVE · insert rev4 LOCKED ACTIVE
+            (DEEP copy of draft lines) — one transaction
+   state-change txn ──▶ outbox (platform) ──▶ history events`,
+      components: [
+        { n: 'Budget service', r: 'updateDraft (two-layer optimistic locking) and publishBudget (copy-on-write fork, single transaction). State-transition guard: LOCKED→DRAFT forbidden.' },
+        { n: 'project_budget table', r: 'Composite PK (budgetId, revision, companyId) — one logical budget, many physical revision rows, tenant isolation in the identity itself.' },
+        { n: 'Readers by intent', r: 'Editor reads the DRAFT; reports/estimates read the single ACTIVE LOCKED. Two intents, two point queries, zero ambiguity.' },
+        { n: 'Outbox (platform, consumed)', r: 'History events atomic with state changes.' },
+      ],
+    },
+    flow: [
+      'Edit: load DRAFT (editSequence → syncToken) → save with token → match: persist + increment · mismatch: 409, client refreshes and re-applies',
+      'Publish: demote previous ACTIVE LOCKED → compute maxRevision+1 → insert new LOCKED ACTIVE with DEEP-copied lines → one transaction',
+      'Read: caller intent picks DRAFT vs ACTIVE — never a version scan',
+    ],
+    dataModel: `project_budget(
+  budget_id, revision, company_id,   -- composite PK
+  state    ENUM(DRAFT, LOCKED, HIDDEN),
+  status   ENUM(ACTIVE, INACTIVE),
+  edit_sequence BIGINT,              -- @Version optimistic lock
+  lines    (child table, FK by full composite key)
+)
+-- invariants: one DRAFT per budget · ≤1 (LOCKED, ACTIVE) per budget
+-- transition guard: LOCKED → DRAFT ⇒ INVALID_LOCKED_STATE`,
+    api: `PUT  /companies/{cid}/budgets/{bid}/draft   { lines, syncToken }
+     → 200 {editSequence: n+1} | 409 Conflict (stale token)
+POST /companies/{cid}/budgets/{bid}/publish { syncToken }
+     → 201 { revision, state: LOCKED, status: ACTIVE } | 409
+GET  /companies/{cid}/budgets/{bid}?view=draft|active|history`,
+    lld: [
+      { h: 'Concurrency — two layers on purpose', points: [
+        'Explicit syncToken compare: clean, early, user-friendly 409 (UX layer)',
+        'JPA @Version on edit_sequence: OptimisticLockException at commit catches the true race (correctness layer)',
+        'Optimistic over pessimistic because hold-time is human-scale — a tab open for hours must not hold a row lock',
+      ]},
+      { h: 'Copy-on-write, precisely', points: [
+        'DEEP copy of line objects at publish — reference-copying would let later draft edits mutate the "immutable" snapshot through shared children',
+        'All three publish writes in one transaction: no observable half-published state',
+      ]},
+      { h: 'Why three axes stay separate', points: [
+        'state=row kind, status=current authority, revision=snapshot counter — conflate any two and reads start guessing (e.g., encoding authority in max(revision) resurrects the ORDER BY bug)',
+      ]},
+    ],
+    tradeoffs: [
+      { choice: 'Version on publish (copy-on-write)', over: 'version every save', why: 'Versions should mark meaningful moments; per-save versioning floods history with keystrokes and makes "current" a scan instead of a flag.' },
+      { choice: 'Optimistic locking', over: 'pessimistic row locks', why: 'Editors are humans with open tabs; conflicts are rare. Check at commit, reject the loser with 409 — never hold DB locks across think-time.' },
+      { choice: 'Status flag for authority', over: '"latest revision wins"', why: 'max(revision) as authority makes every read a scan and every forgotten ORDER BY a stale-money bug. ACTIVE is one indexed point read.' },
+      { choice: 'Immutable LOCKED (no unlock)', over: 'unlock-and-edit', why: 'Locked revisions may back estimates customers have seen; unlocking shifts ground other systems believe frozen. New work forks a NEW revision instead.' },
+    ],
+    failures: [
+      { scenario: 'Two editors save simultaneously', handling: 'First commit wins; second hits token mismatch (or @Version at worst) → 409 → client refreshes, shows the newer state, user re-applies. Silent lost-update is impossible by construction.' },
+      { scenario: 'Crash mid-publish', handling: 'Single transaction: either fully published (old demoted + new ACTIVE) or nothing. No orphaned half-state to repair.' },
+      { scenario: 'Client sends stale token repeatedly', handling: '409 every time with the current editSequence in the body — the client always has what it needs to converge. Semantically precise status code IS the recovery protocol.' },
+    ],
+    evolution: [
+      'Diff-view between revisions: trivial because snapshots are complete rows, not deltas',
+      'Retention: HIDDEN state supports archival without deletion (history stays honest)',
+      'Same pattern generalizes to any draft/publish document — estimates, templates, contracts',
+    ],
+    presentTip: 'Draw the revision-row lifecycle FIRST (draft mutating, publishes forking off locked rows) — the entire design falls out of that one picture. Flag the deep copy unprompted; it is the exact bug a mid-level engineer ships.',
+  },
+
+  'ai-budget-import': {
+    title: 'AI Budget Import',
+    goal: 'Let a probabilistic LLM populate a deterministic financial record — with structural safety, not hope.',
+    openingScript: 'The tension in one line: a budget is deterministic, an LLM is probabilistic, and the design must keep the uncertainty from ever leaking into the money. Three principles generate everything: never block a user on LLM latency (async, server-authoritative state), never let AI output touch the record without a human (EXTRACTED vs COMPLETED gate), and route human attention to exactly where the model is uncertain (confidence tiers). The extraction model itself is QBAI — a boundary I consumed; my system is everything that makes it safe.',
+    scale: [
+      'Extraction latency: seconds to tens of seconds, varies with document size — hence async',
+      'Poll fallback: 5s cadence; push (ICE) typically lands first',
+      'Guardrail: ≤100 records per import — bounds blast radius AND keeps review humanly real',
+    ],
+    requirements: {
+      functional: [
+        'Upload → extract line items mapped to this budget\u2019s cost codes',
+        'Per-line confidence surfaced; human review, correction, accept/cancel',
+        'Progress survives tab close; failure and cancel are explicit states',
+      ],
+      nonFunctional: [
+        'No AI write path to the budget without a human transition',
+        'UI can never hang forever on a lost event (push + poll)',
+        'Idempotent completion (push and poll may both fire)',
+      ],
+    },
+    hld: {
+      diagram: `Browser ──upload──▶ ┌──────────────────┐   startExtraction(doc,
+   │                │  Import service  │──── costCodes) ──────▶ ┌────────┐
+   │                │  (orchestration, │                        │  QBAI  │
+   │  poll 5s ────▶ │   guardrails)    │◀─── push (ICE) ────────│  BFF   │
+   │◀─ status ───── └────────┬─────────┘      or poll pulls     │(model, │
+   │                         ▼                                  │embeds, │
+   │                ImportJob store                             │cosine, │
+   │                NO_DOCUMENT→IN_PROGRESS→EXTRACTED→COMPLETED │conf.)  │
+   │                        (+FAILED / CANCELLED)               └────────┘
+   ▼
+Review grid (AiSparkles on PARTIAL/NO_MATCH only)
+   │ accept(reviewedLines)  — the ONLY write path, human-driven
+   ▼
+Budget grid (deterministic record)`,
+      components: [
+        { n: 'Import service (mine)', r: 'Async orchestration, server-authoritative state machine, 100-record guardrail, idempotent completion handler, the accept gate.' },
+        { n: 'ImportJob store', r: 'The truth. Client state dies with the tab; job status does not. EXTRACTED = parked for review; COMPLETED = human accepted.' },
+        { n: 'QBAI BFF (consumed)', r: 'Extraction + semantic matching: embeddings → cosine vs the budget\u2019s cost codes → thresholds → MATCH / PARTIAL_MATCH / NO_MATCH.' },
+        { n: 'Review UI (mine)', r: 'Confidence surfacing — sparkles only on uncertain tiers: attention where judgment adds value, skimming where it does not.' },
+      ],
+    },
+    flow: [
+      'Upload → job IN_PROGRESS → QBAI kicked with cost codes as matching vocabulary → return immediately',
+      'Completion via push OR poll → ONE idempotent handler → guardrail (≤100) → EXTRACTED (parked)',
+      'Human reviews; corrects flagged rows → accept(reviewedLines) → only-from-EXTRACTED guard → HUMAN version written → COMPLETED',
+      'Failure → EXTRACTION_FAILED with reason (retriable); cancel → CANCELLED. Never a stuck spinner',
+    ],
+    api: `type Mutation {
+  startBudgetImport(budgetId, companyId, documentRef): ImportJob
+  acceptBudgetImport(jobId, reviewedLines: [ExtractedLineInput!]!): ImportJob
+  cancelBudgetImport(jobId): ImportJob
+}
+type Query { importJobStatus(jobId): ImportJob }
+# NOTE the absence: no auto-accept mutation exists. By design,
+# no API path writes AI output to the budget without a human.`,
+    lld: [
+      { h: 'The human gate, mechanically', points: [
+        'EXTRACTED and COMPLETED are distinct states; only acceptBudgetImport crosses, and only from EXTRACTED (guard throws otherwise)',
+        'What lands is reviewedLines — the human-approved, possibly corrected version — never raw model output',
+      ]},
+      { h: 'Confidence pipeline (QBAI-side, but I must explain it)', points: [
+        'Embed extracted text + candidate cost codes → cosine similarity → thresholds cut tiers (Lumber ↔ Framing Materials with zero shared characters)',
+        'Thresholds are a precision/recall dial tuned toward PRECISION on money — when in doubt, ask the human',
+        'Scores are not perfectly calibrated → even MATCH passes through the gate; it just costs less attention',
+      ]},
+      { h: 'Async correctness', points: [
+        'Push for speed, poll for guarantee; both hit one handler guarded by status check — double-fire is a no-op',
+        'Server-authoritative status: laptop closes, extraction continues, review resumes anywhere',
+      ]},
+    ],
+    tradeoffs: [
+      { choice: 'Async with push + poll fallback', over: 'synchronous extraction', why: 'V1 WAS synchronous and taught the lesson: fine on small docs, HTTP timeouts and frozen UI on real ones. Push alone can drop; poll alone is slow. Both, into an idempotent handler, is the honest design.' },
+      { choice: 'Human gates every write', over: 'auto-accept high-confidence rows', why: 'Confidence is not calibrated truth — a 0.9 is not 90% correctness on YOUR document. On financial data the asymmetry is brutal: auto-accept saves seconds, a wrong committed amount costs trust. Absence of the auto-accept mutation is the design.' },
+      { choice: 'Sparkles only on uncertain tiers', over: 'flagging everything', why: 'Re-verify everything and the feature saves nothing; flag nothing and errors sail through. Selective attention IS the product decision — human effort where the model is unsure.' },
+      { choice: 'Server-side state machine', over: 'client-driven status', why: 'Extraction outlives the tab. Client state is a cache of server truth, never the truth.' },
+    ],
+    failures: [
+      { scenario: 'QBAI extraction fails', handling: 'EXTRACTION_FAILED + reason on the job; UI offers retry. Explicit failure state — the user is never staring at an infinite spinner.' },
+      { scenario: 'Push event dropped', handling: 'Poll completes it within ~5s through the same idempotent handler. Designed-for, not hoped-against.' },
+      { scenario: 'Both push and poll fire', handling: 'Status guard makes the second a no-op. Idempotency is what lets me run redundant delivery safely.' },
+      { scenario: 'Model hallucinates a plausible line', handling: 'Structural, not detective: parked in EXTRACTED, flagged if low-confidence, human edits/deletes, human version is what commits. Safe when the model is wrong — the design never assumes it is right.' },
+      { scenario: 'Runaway extraction (500 rows)', handling: 'Guardrail fails the job loudly at 100. Bounded blast radius; review stays humanly possible instead of becoming a rubber stamp.' },
+    ],
+    evolution: [
+      'V3 agentic flow [VERIFY involvement — disclaim if none]; same gate principle holds',
+      'Feedback loop: human corrections are exactly the labeled data that would improve matching (owned by QBAI, but name it)',
+      'Same skeleton for any AI-assist on records: receipts, invoices, estimates — the gate pattern is the reusable asset',
+    ],
+    presentTip: 'Open with the probabilistic/deterministic tension, then let every box be a consequence. Volunteer the QBAI boundary early — then own the harder 80%: the state machine, the gate, the attention routing. The absent auto-accept mutation is your closing line.',
+  },
+
+  'template-sharing': {
+    title: 'Template Sharing on UCS',
+    goal: 'Publish once, share across tenants safely — orchestrating a multi-tenant platform you consume.',
+    openingScript: 'Two hard sub-problems hide in "share a template": a dual write across two services with no shared transaction — the definition in WAS, share metadata in UCS — and a read model where SHARED_WITH_ME is the union of four different visibility rules, one of which depends on a relationship graph outside the platform. My design decisions: order the dual write so the failure mode is harmless, and make the union query cursor-paginated because the underlying list moves while users page.',
+    scale: [
+      '1,000+ publishers; ~60% setup-time reduction for template consumers',
+      'SHARED_WITH_ME = 4-predicate union; ALL_MY_CLIENTS resolves the firm-client graph externally first',
+    ],
+    requirements: {
+      functional: [
+        'Publish template; share at ALL / ALL_MY_COMPANIES / ALL_MY_CLIENTS / CUSTOM, USER or REALM granularity',
+        'SHARED_WITH_ME and MINE listings, stable pagination',
+        'Unshare without destroying the definition; audit trail (who/user/company)',
+      ],
+      nonFunctional: [
+        'Tenant isolation via mandatory offeringId partition key',
+        'No dangling references ever user-visible',
+        'PII handling honest about its guarantees',
+      ],
+    },
+    hld: {
+      diagram: `Publisher UI ──▶ Orchestration (mine)
+                    │ 1. persist definition ─────▶ WAS (workflow defs)
+                    │ 2. create share metadata ──▶ UCS (platform)
+                    │      entityReferenceId → WAS id
+                    │      offeringId · IAM ticket · intuit_tid
+                    │ on step-2 failure: orphan sweeper(defId)
+Consumer UI ──▶ SHARED_WITH_ME
+                = ALL ∪ (ALL_MY_COMPANIES ∧ my user)
+                ∪ (ALL_MY_CLIENTS ∧ publisher ∈ my firms*)  *external graph
+                ∪ (CUSTOM ∧ me ∈ targets)
+                Relay cursors: first / after / endCursor / hasNextPage`,
+      components: [
+        { n: 'Orchestration + UI (mine)', r: 'Publish flow with WAS-first ordering, scope selection, client-side PII masking, listings.' },
+        { n: 'WAS', r: 'System of record for the workflow definition itself.' },
+        { n: 'UCS (platform, consumed)', r: 'Share metadata, scope model, ACL evaluation, pagination. I did NOT build its ACL engine — I orchestrated against it.' },
+        { n: 'Orphan sweeper', r: 'Cleans WAS definitions whose UCS write failed — the designed-for failure mode.' },
+      ],
+    },
+    flow: [
+      'Publish: WAS write → UCS metadata write referencing it → success returns both ids',
+      'Step-2 failure: schedule orphan cleanup, surface retriable error — user retries the whole operation (WAS write is idempotent on content [VERIFY])',
+      'Read: resolve firm graph if needed → union query → cursor page → render',
+      'Unshare: delete UCS metadata, keep WAS definition (owner may re-share)',
+    ],
+    lld: [
+      { h: 'Dual-write ordering (the senior argument)', points: [
+        'No shared transaction ⇒ pick the failure mode: WAS-first leaves an invisible, cleanable orphan; UCS-first risks metadata pointing at nothing — user-visible corruption',
+        'Rule worth stating generally: when two writes cannot be atomic, order them so the failure you get is the failure you can live with',
+      ]},
+      { h: 'Cursor pagination', points: [
+        'Offsets shift under concurrent inserts → duplicates/skips mid-paging',
+        'Cursor = stable position (createdAt, id) compound sort — deterministic even under timestamp ties',
+      ]},
+      { h: 'PII masking honesty', points: [
+        'Client-side dot-dash masking at publish = publisher-trust convenience, NOT a security boundary; a hostile client skips it',
+        'A server-side backstop is what would upgrade it to a guarantee [VERIFY existence] — precision about guarantees beats overclaiming',
+      ]},
+    ],
+    tradeoffs: [
+      { choice: 'WAS before UCS', over: 'UCS before WAS', why: 'Orphan (invisible, sweepable) beats dangling reference (visible corruption). The whole argument in one line.' },
+      { choice: 'Consume UCS', over: 'building product-local sharing tables', why: 'Sharing, scopes, and ACL evaluation are platform problems solved once for many products; offeringId partitioning is the contract that makes that safe. Build the orchestration, not the engine.' },
+      { choice: 'Cursor pagination', over: 'offset pagination', why: 'The list mutates while users page; correctness under concurrency beats the simplicity of page numbers.' },
+      { choice: 'Unshare keeps the definition', over: 'cascade delete', why: 'Share metadata and the asset have different lifecycles; owners re-share. Soft semantics keep referencing data coherent.' },
+    ],
+    failures: [
+      { scenario: 'UCS write fails after WAS succeeded', handling: 'Orphan sweeper collects the definition; user sees a retriable error. Nothing user-visible dangles — by ordering, not by luck.' },
+      { scenario: 'Firm-client graph service degraded', handling: 'ALL_MY_CLIENTS predicate unavailable → degrade the union gracefully (other three scopes still serve) + surface partial-results indicator [VERIFY exact behavior]. Never block the whole listing on one predicate\u2019s dependency.' },
+      { scenario: 'Cursor points past deleted rows', handling: 'Cursor semantics are strictly-after — deletions cause no duplicates, just a shorter page. hasNextPage recomputed per request.' },
+    ],
+    evolution: [
+      'New scope types = new predicates in the union; the read model absorbs them without schema surgery',
+      'Server-side PII backstop is the highest-value hardening step',
+      'Template versioning composes cleanly: share metadata points at a definition version (same copy-on-write instinct as budget versioning)',
+    ],
+    presentTip: 'Spend your first minute on the two-writes-no-transaction problem — it is the most transferable thinking in the design. Say "orphan beats dangling reference" while drawing the failure arrow, and volunteer the UCS boundary before they ask.',
+  },
+
+  'consolidated-email': {
+    title: 'Consolidated Email (Notification Digest)',
+    goal: 'Cut notification volume ~65% with a per-workflow digest preference — resolved at the only moment that is deterministic: send time.',
+    openingScript: 'Honest scoping first: my production slice was the frontend and the mode-aware component refactor — but the design question "build the consolidation system" is fair game, so here is how I would design the whole pipeline. It is a digest problem: buffer notification events, window them, render one consolidated email — with the one subtle decision being WHEN the user\u2019s preference is read. My answer: at execution time, because anything earlier makes in-flight emails behave inconsistently when the toggle flips.',
+    scale: [
+      '65% email-volume reduction, ~40% CSAT lift [VERIFY]',
+      'Digest window: e.g. 15-min tumbling per (realm, workflow) [VERIFY actual] — the latency/volume dial',
+    ],
+    requirements: {
+      functional: [
+        'Per-workflow preference: INDIVIDUAL vs CONSOLIDATED',
+        'Consolidated mode: window events → one digest email with full fidelity (CC/BCC, freeform text preserved)',
+        'Toggle takes effect deterministically, including for in-flight sends',
+      ],
+      nonFunctional: [
+        'No lost notifications during mode transitions',
+        'Legal-approved content (merge gate)',
+        'Reversible rollout; default preserves old behavior',
+      ],
+    },
+    hld: {
+      diagram: `Workflow events ──▶ Notification service
+                        │  resolve preference AT SEND TIME
+                        ▼
+              ┌── INDIVIDUAL ──▶ render → send (per event)
+              │
+              └── CONSOLIDATED ─▶ digest buffer
+                                   key: (realmId, workflowId)
+                                   tumbling window (e.g. 15 min)
+                                   │ window closes
+                                   ▼
+                            render digest → send ONE email
+Preference store ◀── PUT /email-preference (UI toggle, mine)`,
+      components: [
+        { n: 'Preference store', r: 'Per (realm, workflow) mode + updatedAt. Deliberately boring — the design lives in when it is read.' },
+        { n: 'Send-time resolver', r: 'The one rule that matters: mode is read at execution, never snapshotted at enqueue. Kills the in-flight inconsistency class.' },
+        { n: 'Digest buffer + window', r: 'Groups by (realm, workflow); tumbling window trades latency for volume. Flush renders one email preserving CC/BCC and freeform content.' },
+        { n: 'Mode-aware UI components (my slice)', r: 'Shared CC/BCC, freeform, attachment components refactored to switch behavior by prop — one component, no fork debt.' },
+      ],
+    },
+    flow: [
+      'Event arrives → resolver reads CURRENT preference',
+      'INDIVIDUAL → render + send immediately',
+      'CONSOLIDATED → append to (realm, workflow) buffer; window timer flushes → one digest email',
+      'Toggle mid-window: events already buffered flush as digest; new events follow the new mode — deterministic because resolution is at execution',
+    ],
+    api: `GET /v1/realms/{rid}/workflows/{wid}/email-preference
+PUT /v1/realms/{rid}/workflows/{wid}/email-preference { mode }
+# semantics: affects emails EXECUTED after this write`,
+    lld: [
+      { h: 'The timing principle (generalizable)', points: [
+        'For ANY setting ask: at what moment is it read, and what is in flight when it changes?',
+        'Enqueue-time snapshots go stale by send time — the exact bug class execution-time resolution removes',
+      ]},
+      { h: 'Windowing choice', points: [
+        'Tumbling window per key: simple, predictable digest cadence; the window length is the latency-vs-volume dial',
+        'Flush must be atomic per key — one digest per window, never partial duplicates [design intent]',
+      ]},
+    ],
+    tradeoffs: [
+      { choice: 'Execution-time preference resolution', over: 'enqueue-time snapshot', why: 'Snapshots make in-flight emails behave by pipeline position — nondeterministic UX. Execution-time is deterministic no matter when the toggle flips.' },
+      { choice: 'Mode-aware shared components', over: 'forking the email UI', why: 'A fork is permanent double-maintenance; every fix lands twice or diverges. Props switch behavior in one component — harder once, cheaper forever.' },
+      { choice: 'Opt-in default (old behavior)', over: 'default-on consolidation', why: 'Backward compatible, reversible, and the percentage rollout stays meaningful. Changing email behavior under people uninvited is how trust erodes.' },
+    ],
+    failures: [
+      { scenario: 'Digest flush crashes mid-window', handling: 'Buffer is persistent [design intent]; flush is retried idempotently on (key, windowId) — one digest, at-least-once processing, no lost notifications.' },
+      { scenario: 'Preference store briefly unavailable at send', handling: 'Fail safe to INDIVIDUAL (old behavior) rather than dropping or delaying — degraded mode is the pre-feature world, which is always acceptable.' },
+    ],
+    evolution: [
+      'Per-user quiet hours / channel preferences slot into the same send-time resolver',
+      'Digest templating per workflow type; summary-line intelligence is a natural later layer',
+    ],
+    presentTip: 'Lead with the honest scope line, then the timing principle — it is small but it is REAL design judgment, and interviewers reward candidates who extract transferable principles from modest features.',
+  },
+
+  'implicit-ads': {
+    title: 'Implicit Ads Detection Pipeline',
+    goal: 'Batch ML pipeline flagging implicit-advertising segments in video for human review — recall-first by design.',
+    openingScript: 'Framing honestly: this was academic, so I will design it as the production system it would become. It is a classification pipeline: segment the video, extract multi-modal features, score each segment, threshold tuned for recall, and route flags to a review queue. The two decisions worth defending are WHY multi-modal — intent lives in the combination of signals, no single mode is sufficient — and why the threshold is set for recall: a missed ad slips through undisclosed, while a false flag costs a reviewer seconds.',
+    requirements: {
+      functional: [
+        'Ingest video → segment → per-segment ad probability → flags above threshold',
+        'Reviewer queue with evidence (which signals fired)',
+        'Metrics: recall/F1 on the ad class tracked over time',
+      ],
+      nonFunctional: [
+        'Recall target first (e.g. ≥0.90), precision optimized second',
+        'Batch latency acceptable (not real-time)',
+        'Model swappable without pipeline rewrites',
+      ],
+    },
+    hld: {
+      diagram: `Video in ──▶ Segmenter (shot/scene boundaries)
+                 │ per segment
+                 ▼
+   ┌─ Visual extractor (logo detect, framing) ──┐
+   ├─ Audio extractor (ASR → language scores) ──┼─▶ feature vector
+   └─ Context extractor (position, flow) ───────┘   (early fusion)
+                 │
+                 ▼
+        Classifier ──▶ probability ──▶ threshold (recall-tuned)
+                                          │ ≥ τ
+                                          ▼
+                                   Review queue (human)
+                                          │ labels feed back
+                                          ▼
+                                Retraining set (data flywheel)`,
+      components: [
+        { n: 'Segmenter', r: 'Scene/shot boundaries define the unit of detection — segment-level, not whole-video, because ads are local.' },
+        { n: 'Per-mode extractors', r: 'Independent, parallelizable, individually testable. Visual: logo presence/prominence. Audio: transcript → promotional-language score. Context: position, flow interruption.' },
+        { n: 'Fusion + classifier', r: 'Early fusion into one vector so the model learns cross-mode interactions — the intent signal IS the combination.' },
+        { n: 'Threshold + review queue', r: 'τ chosen as lowest threshold meeting the recall target; flags carry per-feature evidence so reviewers decide fast.' },
+      ],
+    },
+    flow: [
+      'Ingest → segment → extract three feature groups in parallel → fuse',
+      'Classifier outputs probability per segment',
+      'p ≥ τ → flag with evidence → reviewer confirms/rejects',
+      'Reviewer labels append to the training set → periodic retrain → re-pick τ on fresh validation data',
+    ],
+    lld: [
+      { h: 'Metric discipline', points: [
+        'Accuracy flatters imbalance (ads are the minority class); the tracked numbers are recall and F1 on the ad class',
+        'Train/validation/test split; τ chosen on validation, reported on test — the 85% is test-set, i.e. generalization',
+      ]},
+      { h: 'Threshold selection', points: [
+        'precision_recall_curve → among thresholds with recall ≥ target, take max precision',
+        'Re-derive τ every retrain — thresholds are data-dependent, not constants',
+      ]},
+    ],
+    tradeoffs: [
+      { choice: 'Recall-first threshold', over: 'balanced/precision-first', why: 'Error costs: a missed implicit ad is an undisclosed ad in the wild; a false flag is seconds of reviewer time. Opposite tuning from my budget import (precision-first on money) — same dial, reversed costs.' },
+      { choice: 'Early fusion', over: 'late fusion (per-mode voters)', why: 'The signal is cross-modal (logo + salesy audio + flow break TOGETHER); early fusion lets the model learn those interactions directly. Late fusion is more modular but blunts exactly the interaction we need.' },
+      { choice: 'Human review of flags', over: 'auto-publish detections', why: 'At ~85% the model is a screener, not a judge. Human-in-the-loop converts tolerable precision into a usable system — and the review labels are free training data.' },
+      { choice: 'Segment granularity', over: 'whole-video classification', why: 'Ads are local phenomena; whole-video labels destroy the actionable information (WHERE is the ad).' },
+    ],
+    failures: [
+      { scenario: 'One extractor fails on a video (e.g. no audio track)', handling: 'Score with the remaining modes + a missing-mode indicator feature; recall-first means when evidence is thin, prefer flagging. Degrade toward the cheap error.' },
+      { scenario: 'Class drift (new ad styles)', handling: 'Recall on fresh reviewer labels is the canary; drop triggers retrain with the flywheel data and a fresh τ.' },
+      { scenario: 'Reviewer queue floods (precision collapse)', handling: 'That is the recall-first failure mode by construction — raise τ toward the recall floor, improve features (the real fix), and triage queue by probability.' },
+    ],
+    evolution: [
+      'Late-fusion ensemble as a second opinion on disagreement cases',
+      'Active learning: route lowest-confidence segments to reviewers first — maximum label value per human minute',
+      'The honest boundary if pushed to internals: I reason about ML systems and tradeoffs; I have not implemented model internals — and that line, said cleanly, is a strength',
+    ],
+    presentTip: 'Say "academic, so I will design the production version" up front — it converts a weakness into initiative. Land the recall-vs-precision contrast with budget import; it is the single sentence that proves you understand ML tradeoffs rather than reciting them.',
+  },
+};
+
+/* ============================================================================
  * STYLES
  * ============================================================================
  * Editorial/refined dark theme. Serif display (Fraunces) + monospace accent
@@ -3450,6 +4477,7 @@ const css = `
     font-weight: 400;
     line-height: 1.55;
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
   }
 
@@ -4012,6 +5040,697 @@ const css = `
     border: 1px solid var(--rule);
   }
   .pf-tab-badge.hr { color: var(--tier-2); }
+
+  .pf-project-full { grid-template-columns: 1fr !important; }
+  .pf-project-full .pf-body { max-width: 100%; }
+
+  /* ============================== RESPONSIVE TIERS ========================= */
+  /* Prose measure: keep long-form lines readable at any width */
+  .pf-fc-p { max-width: 78ch; }
+  .pf-fc-subtitle { max-width: 70ch; }
+  .pf-dd-fpqa-a, .pf-sd-trade-why, .pf-sd-fail-handling { max-width: 88ch; }
+
+  /* Laptop squeeze zone (split windows, small laptops): keep 2 columns, tighten */
+  @media (min-width: 901px) and (max-width: 1200px) {
+    .pf-shell { padding: 44px 32px 100px; }
+    .pf-dd-shell, .pf-fc-shell, .pf-hr-shell { grid-template-columns: 222px 1fr; gap: 32px; }
+    .pf-ov-shell { grid-template-columns: 210px 1fr; gap: 28px; }
+    .pf-project { grid-template-columns: 200px 1fr; gap: 32px; }
+    .pf-fc-title { font-size: 34px; }
+    .pf-sd-diagram { font-size: 10.5px; }
+    .pf-sd-component { grid-template-columns: 200px 1fr; }
+  }
+
+  /* Large monitor: use the space, scale comfortably */
+  @media (min-width: 1600px) {
+    .pf-shell { max-width: 1480px; padding: 72px 64px 140px; }
+    .pf-dd-shell, .pf-fc-shell, .pf-hr-shell { grid-template-columns: 300px 1fr; gap: 72px; }
+    .pf-ov-shell { grid-template-columns: 280px 1fr; gap: 64px; }
+    .pf-fc-title { font-size: 46px; }
+    .pf-fc-p { font-size: 16.5px; }
+    .pf-dd-fpqa-q { font-size: 18px; }
+    .pf-dd-fpqa-a { font-size: 15px; }
+    .pf-cg-code { font-size: 13px; }
+    .pf-sd-diagram { font-size: 12.5px; }
+    .pf-cg-say, .pf-sd-trade-why, .pf-sd-fail-handling,
+    .pf-sd-comp-role, .pf-sd-flow li, .pf-sd-list li { font-size: 14.5px; }
+  }
+
+  /* ============================== CODE BLOCKS ============================= */
+  .pf-codeblock { margin: 0 0 4px; }
+  .pf-codeblock-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #141312;
+    border: 1px solid var(--rule);
+    border-bottom: none;
+    border-radius: 6px 6px 0 0;
+    padding: 6px 12px 6px 14px;
+  }
+  [data-theme="dark"] .pf-codeblock-bar { background: #0a0a0c; }
+  .pf-codeblock-lang {
+    font-family: var(--mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .pf-codeblock-copy {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.05em;
+    color: #9a948a;
+    background: transparent;
+    border: 1px solid #33312e;
+    border-radius: 4px;
+    padding: 3px 10px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .pf-codeblock-copy:hover { color: #e8e2d4; border-color: #55524d; }
+  .pf-codeblock .pf-cg-code {
+    border-radius: 0 0 6px 6px;
+    margin: 0;
+    font-variant-ligatures: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .tok-c { color: #7d8a6a; font-style: italic; }
+  .tok-s { color: #d9a05f; }
+  .tok-k { color: #e8703b; font-weight: 500; }
+  .tok-n { color: #a8b8dc; }
+  .tok-a { color: #c9a465; }
+  .tok-t { color: #8fc3d4; }
+
+  /* ============================== DARK MODE TEXT ========================== */
+  [data-theme="dark"] .pf-root,
+  [data-theme="dark"] body {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  [data-theme="dark"] .pf-fc-p,
+  [data-theme="dark"] .pf-narrative,
+  [data-theme="dark"] .pf-killer-text {
+    font-weight: 400;
+    letter-spacing: 0.004em;
+  }
+  [data-theme="dark"] .pf-fc-title,
+  [data-theme="dark"] .pf-name { letter-spacing: -0.015em; }
+
+  /* ============================== MOBILE PASS ============================= */
+  @media (max-width: 720px) {
+    .pf-tabs {
+      overflow-x: auto;
+      scrollbar-width: none;
+      -webkit-overflow-scrolling: touch;
+      margin: 28px 0 32px;
+    }
+    .pf-tabs::-webkit-scrollbar { display: none; }
+    .pf-tab {
+      white-space: nowrap;
+      padding: 10px 12px;
+      font-size: 13px;
+      flex-shrink: 0;
+    }
+    .pf-tab-badge { display: none; }
+    .pf-killer { padding: 20px 16px; }
+    .pf-killer-label, .pf-killer-text { margin-left: 0; }
+    .pf-killer::before { display: none; }
+    .pf-cg-code { font-size: 11px; padding: 12px 12px; }
+    .pf-sd-diagram { font-size: 9.5px; padding: 12px 10px; }
+    .pf-sd-open { padding: 14px 14px; font-size: 14px; }
+    .pf-dd-fpqa-item { padding: 13px 14px; }
+    .pf-fc-p { font-size: 14.5px; }
+    .pf-fc-title { font-size: 26px; }
+    .pf-fc-subtitle { font-size: 14px; margin-bottom: 24px; }
+    .pf-cg-h { font-size: 17px; }
+    .pf-cg-say { font-size: 12.5px; padding: 10px 12px; }
+    .pf-sd-trade-chose { font-size: 14px; }
+    .pf-sd-flow li, .pf-sd-list li, .pf-sd-trade-why,
+    .pf-sd-fail-handling, .pf-sd-comp-role { font-size: 12.5px; }
+  }
+  @media (max-width: 540px) {
+    .pf-shell { padding: 24px 14px 64px; }
+    .pf-name { font-size: 34px; }
+    .pf-meta { grid-template-columns: 1fr; }
+    .pf-meta-cell, .pf-meta-cell:nth-child(odd) { border-right: none; }
+    .pf-fc-item { font-size: 11px; padding: 5px 10px; }
+    .pf-codeblock-bar { padding: 5px 8px 5px 10px; }
+  }
+
+  /* ============================== DARK MODE FIXES ========================= */
+  [data-theme="dark"] .pf-killer {
+    background: #201f1c;
+    border: 1px solid var(--rule);
+  }
+  [data-theme="dark"] .pf-killer-text { color: var(--ink); }
+  [data-theme="dark"] .pf-killer-label { color: var(--accent); }
+  [data-theme="dark"] .pf-landmines {
+    background: #231712;
+    border-color: var(--accent-soft);
+  }
+
+  /* ============================== OVERVIEW NAV ============================ */
+  .pf-ov-shell {
+    display: grid;
+    grid-template-columns: 250px 1fr;
+    gap: 48px;
+    align-items: start;
+  }
+  .pf-ov-side {
+    position: sticky;
+    top: 24px;
+    max-height: calc(100vh - 48px);
+    overflow-y: auto;
+    padding-right: 6px;
+  }
+  .pf-ov-item {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    width: 100%;
+  }
+  .pf-ov-tier {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+  .pf-ov-tier[data-tier="1"] { color: var(--tier-1); }
+  .pf-ov-tier[data-tier="2"] { color: var(--tier-2); }
+  .pf-ov-tier[data-tier="3"] { color: var(--tier-3); }
+  .pf-ov-legend {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    margin-top: 8px;
+  }
+  .pf-ov-legend span {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-faded);
+    letter-spacing: 0.02em;
+  }
+  .pf-ov-main { min-width: 0; }
+  @media (max-width: 900px) {
+    .pf-ov-shell { grid-template-columns: 1fr; gap: 20px; }
+    .pf-ov-side { position: static; max-height: none; border-bottom: 1px solid var(--rule); padding-bottom: 14px; }
+    .pf-ov-legend { display: none; }
+  }
+
+  /* ============================== SYSTEM DESIGN v2 ======================== */
+  .pf-sd-open {
+    font-family: var(--serif);
+    font-size: 15px;
+    line-height: 1.7;
+    color: var(--ink);
+    padding: 18px 22px;
+    background: var(--fp-bg);
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--accent);
+    border-radius: 3px;
+    margin-bottom: 30px;
+    font-style: italic;
+  }
+  .pf-sd-trades, .pf-sd-fails {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .pf-sd-trade {
+    padding: 12px 16px;
+    background: var(--paper-warm);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+  }
+  .pf-sd-trade-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: 6px;
+  }
+  .pf-sd-trade-chose {
+    font-family: var(--display);
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--ink);
+  }
+  .pf-sd-trade-over {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .pf-sd-trade-why {
+    font-family: var(--body);
+    font-size: 13.5px;
+    line-height: 1.6;
+    color: var(--ink-soft);
+  }
+  .pf-sd-fail {
+    padding: 12px 16px;
+    background: var(--fu-bg);
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--tier-2);
+    border-radius: 3px;
+  }
+  .pf-sd-fail-scenario {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink);
+    margin-bottom: 5px;
+    letter-spacing: 0.01em;
+  }
+  .pf-sd-fail-scenario::before {
+    content: '⚠ ';
+    color: var(--tier-2);
+  }
+  .pf-sd-fail-handling {
+    font-family: var(--body);
+    font-size: 13.5px;
+    line-height: 1.6;
+    color: var(--ink-soft);
+  }
+
+  /* ============================== FULL CONTEXT / CODE / DESIGN ============= */
+  .pf-fc-shell {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    gap: 56px;
+    margin-top: 8px;
+  }
+  .pf-fc-side {
+    position: sticky;
+    top: 24px;
+    align-self: start;
+    max-height: calc(100vh - 48px);
+    overflow-y: auto;
+    padding-right: 8px;
+  }
+  .pf-fc-list { display: flex; flex-direction: column; gap: 1px; }
+  .pf-fc-item {
+    background: transparent;
+    border: none;
+    border-left: 2px solid transparent;
+    padding: 9px 12px;
+    text-align: left;
+    font-family: var(--body);
+    font-size: 13.5px;
+    color: var(--ink-faded);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    line-height: 1.35;
+  }
+  .pf-fc-item:hover { color: var(--ink); }
+  .pf-fc-item.active {
+    color: var(--ink);
+    border-left-color: var(--accent);
+    font-weight: 500;
+  }
+  .pf-fc-side-note {
+    margin-top: 18px;
+    padding: 12px 14px;
+    background: var(--fu-bg);
+    border-radius: 3px;
+    font-family: var(--body);
+    font-size: 12px;
+    line-height: 1.55;
+    color: var(--ink-mid);
+    font-style: italic;
+  }
+  .pf-fc-main { min-width: 0; }
+  .pf-fc-title {
+    font-family: var(--display);
+    font-size: 40px;
+    font-weight: 400;
+    letter-spacing: -0.02em;
+    line-height: 1.05;
+    color: var(--ink);
+    margin: 8px 0 10px;
+  }
+  .pf-fc-subtitle {
+    font-family: var(--serif);
+    font-size: 16px;
+    font-style: italic;
+    color: var(--ink-soft);
+    margin-bottom: 36px;
+    line-height: 1.5;
+  }
+  .pf-fc-section { margin-bottom: 34px; }
+  .pf-fc-h {
+    font-family: var(--display);
+    font-size: 21px;
+    font-weight: 500;
+    color: var(--ink);
+    margin: 0 0 12px;
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+  }
+  .pf-fc-num {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .pf-fc-p {
+    font-family: var(--serif);
+    font-size: 15.5px;
+    line-height: 1.75;
+    color: var(--ink);
+    margin: 0 0 12px;
+  }
+
+  /* Code guides */
+  .pf-cg-section { margin-bottom: 30px; }
+  .pf-cg-h {
+    font-family: var(--display);
+    font-size: 19px;
+    font-weight: 500;
+    color: var(--ink);
+    margin: 0 0 10px;
+  }
+  .pf-cg-say {
+    font-family: var(--body);
+    font-size: 13.5px;
+    line-height: 1.6;
+    color: var(--ink-soft);
+    padding: 12px 16px;
+    background: var(--fu-bg);
+    border-left: 3px solid var(--accent);
+    border-radius: 3px;
+    margin-bottom: 12px;
+  }
+  .pf-cg-say-label {
+    display: block;
+    font-family: var(--mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--accent);
+    margin-bottom: 6px;
+    font-weight: 600;
+    font-style: normal;
+  }
+  .pf-cg-code {
+    background: #1c1b1a;
+    color: #e8e2d4;
+    border-radius: 4px;
+    padding: 16px 18px;
+    overflow-x: auto;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1.6;
+    margin: 0;
+    border: 1px solid var(--rule);
+  }
+  [data-theme="dark"] .pf-cg-code {
+    background: #101012;
+    border-color: var(--rule);
+  }
+  .pf-cg-close {
+    font-family: var(--body);
+    font-size: 13.5px;
+    line-height: 1.6;
+    color: var(--ink-soft);
+    padding: 14px 16px;
+    background: var(--fu-bg);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    margin-top: 8px;
+  }
+
+  /* System design */
+  .pf-sd-section { margin-bottom: 30px; }
+  .pf-sd-req-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+  }
+  .pf-sd-req-label {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--accent);
+    margin-bottom: 8px;
+    font-weight: 600;
+  }
+  .pf-sd-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .pf-sd-list li {
+    font-family: var(--body);
+    font-size: 13.5px;
+    line-height: 1.55;
+    color: var(--ink-soft);
+    padding-left: 18px;
+    position: relative;
+  }
+  .pf-sd-list li::before {
+    content: '─';
+    position: absolute;
+    left: 0;
+    color: var(--accent);
+    font-family: var(--mono);
+  }
+  .pf-sd-diagram {
+    background: var(--paper-warm);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 16px 18px;
+    overflow-x: auto;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    line-height: 1.5;
+    color: var(--ink);
+    margin: 0 0 16px;
+  }
+  .pf-sd-components { display: flex; flex-direction: column; gap: 8px; }
+  .pf-sd-component {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    gap: 14px;
+    padding: 10px 14px;
+    background: var(--paper-warm);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+  }
+  .pf-sd-comp-name {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent);
+    line-height: 1.45;
+  }
+  .pf-sd-comp-role {
+    font-family: var(--body);
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--ink-soft);
+  }
+  .pf-sd-flow {
+    margin: 0;
+    padding-left: 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .pf-sd-flow li {
+    font-family: var(--body);
+    font-size: 13.5px;
+    line-height: 1.6;
+    color: var(--ink);
+  }
+  .pf-sd-flow li::marker {
+    font-family: var(--mono);
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .pf-sd-lld-block { margin-bottom: 16px; }
+
+  /* First principles Q&A (L4 rewrite) */
+  .pf-dd-fpqa { display: flex; flex-direction: column; gap: 14px; }
+  .pf-dd-fpqa-item {
+    background: var(--fp-bg);
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--accent);
+    border-radius: 3px;
+    padding: 16px 20px;
+  }
+  .pf-dd-fpqa-q {
+    font-family: var(--display);
+    font-size: 17px;
+    font-weight: 500;
+    color: var(--ink);
+    margin-bottom: 8px;
+    line-height: 1.4;
+  }
+  /* Overview jump index */
+  .pf-toc {
+    border: 1px solid var(--rule);
+    background: var(--paper-warm);
+    padding: 18px 20px;
+    margin-bottom: 40px;
+    border-radius: 2px;
+  }
+  .pf-toc-label {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--accent);
+    font-weight: 600;
+    margin-bottom: 12px;
+  }
+  .pf-toc-items {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px 24px;
+  }
+  .pf-toc-item {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    background: transparent;
+    border: none;
+    padding: 6px 4px;
+    text-align: left;
+    cursor: pointer;
+    font-family: var(--body);
+    font-size: 13.5px;
+    color: var(--ink-soft);
+    border-radius: 2px;
+    transition: color 0.15s ease;
+  }
+  .pf-toc-item:hover { color: var(--accent); }
+  .pf-toc-num {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--accent);
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+  .pf-toc-title { line-height: 1.4; }
+  .pf-toc-tier {
+    font-family: var(--mono);
+    font-size: 10px;
+    margin-left: auto;
+    flex-shrink: 0;
+    color: var(--ink-faded);
+  }
+  .pf-toc-tier.t1 { color: var(--tier-1); }
+  .pf-toc-tier.t2 { color: var(--tier-2); }
+  .pf-project { scroll-margin-top: 24px; }
+  @media (max-width: 720px) { .pf-toc-items { grid-template-columns: 1fr; } }
+
+  /* SD: 15-min plan */
+  .pf-sd-plan {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    border-left: 2px solid var(--accent);
+    padding-left: 16px;
+  }
+  .pf-sd-plan li {
+    font-family: var(--body);
+    font-size: 13.5px;
+    line-height: 1.6;
+    color: var(--ink);
+  }
+
+  /* SD: key decisions */
+  .pf-sd-kd { display: flex; flex-direction: column; gap: 12px; }
+  .pf-sd-kd-item {
+    border: 1px solid var(--rule);
+    background: var(--paper-warm);
+    padding: 14px 18px;
+    border-radius: 3px;
+  }
+  .pf-sd-kd-q {
+    font-family: var(--display);
+    font-size: 16px;
+    font-weight: 500;
+    color: var(--ink);
+    margin-bottom: 8px;
+  }
+  .pf-sd-kd-row {
+    display: grid;
+    grid-template-columns: 64px 1fr;
+    gap: 12px;
+    font-family: var(--body);
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--ink-soft);
+    padding: 3px 0;
+  }
+  .pf-sd-kd-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--ink-faded);
+    font-weight: 600;
+    padding-top: 2px;
+  }
+  .pf-sd-kd-label.chosen { color: var(--accent); }
+  .pf-sd-kd-label.alt { color: var(--tier-2); }
+
+  /* SD: failure modes */
+  .pf-sd-fail { display: flex; flex-direction: column; gap: 6px; }
+  .pf-sd-fail-row {
+    display: grid;
+    grid-template-columns: 260px 1fr;
+    gap: 14px;
+    padding: 10px 14px;
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+  }
+  .pf-sd-fail-f {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent);
+    line-height: 1.5;
+  }
+  .pf-sd-fail-h {
+    font-family: var(--body);
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--ink-soft);
+  }
+  @media (max-width: 720px) {
+    .pf-sd-fail-row { grid-template-columns: 1fr; gap: 4px; }
+    .pf-sd-kd-row { grid-template-columns: 1fr; gap: 2px; }
+  }
+
+  .pf-dd-fpqa-a {
+    font-family: var(--body);
+    font-size: 14px;
+    line-height: 1.65;
+    color: var(--ink-soft);
+  }
+
+  @media (max-width: 900px) {
+    .pf-fc-shell { grid-template-columns: 1fr; gap: 24px; }
+    .pf-fc-side { position: static; max-height: none; border-bottom: 1px solid var(--rule); padding-bottom: 16px; }
+    .pf-fc-list { flex-direction: row; flex-wrap: wrap; gap: 6px; }
+    .pf-fc-item { border-left: none; border: 1px solid var(--rule); border-radius: 999px; padding: 6px 12px; font-size: 12px; }
+    .pf-fc-item.active { border-color: var(--accent); }
+    .pf-fc-title { font-size: 30px; }
+    .pf-sd-req-grid { grid-template-columns: 1fr; }
+    .pf-sd-component { grid-template-columns: 1fr; gap: 4px; }
+  }
 
   /* ============================== HR ROUND ============================== */
   .pf-hr-shell {
@@ -5047,6 +6766,18 @@ const css = `
   [data-theme="dark"] .pf-dd-algo { background: var(--paper-2); border-color: var(--rule); }
   [data-theme="dark"] .pf-dd-story { background: var(--paper-2); border-color: var(--rule); }
   [data-theme="dark"] .pf-dd-edge { background: var(--paper-2); border-color: var(--rule); }
+  [data-theme="dark"] .pf-killer {
+    background: var(--paper-2);
+    color: var(--ink);
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--accent);
+  }
+  [data-theme="dark"] .pf-killer-text { color: var(--ink); }
+  [data-theme="dark"] .pf-landmines {
+    background: rgba(232, 112, 59, 0.07);
+    border-color: rgba(232, 112, 59, 0.35);
+  }
+  [data-theme="dark"] .pf-landmines li { color: var(--ink-soft); }
   [data-theme="dark"] .pf-project { background: transparent; }
   [data-theme="dark"] .pf-project-body { border-color: var(--rule); }
   [data-theme="dark"] .pf-project-side { border-color: var(--rule); }
@@ -5120,34 +6851,7 @@ const Section = ({ num, title, defaultOpen = true, children }) => {
 const Project = ({ project, index }) => {
   const idx = String(index + 1).padStart(2, '0');
   return (
-    <article className="pf-project">
-      <aside className="pf-side">
-        <span className="pf-tier" data-tier={project.tier}>
-          {TIER_LABELS[project.tier]}
-        </span>
-
-        <div className="pf-side-row">
-          <div className="pf-side-label">Year</div>
-          <div className="pf-side-value">{project.year}</div>
-        </div>
-        <div className="pf-side-row">
-          <div className="pf-side-label">Context</div>
-          <div className="pf-side-value">{project.company}</div>
-        </div>
-        <div className="pf-side-row">
-          <div className="pf-side-label">Role</div>
-          <div className="pf-side-value">{project.role}</div>
-        </div>
-        <div className="pf-side-row">
-          <div className="pf-side-label">Domains</div>
-          <div className="pf-tags">
-            {project.tags.map((t) => (
-              <span key={t} className="pf-tag">{t}</span>
-            ))}
-          </div>
-        </div>
-      </aside>
-
+    <article className="pf-project pf-project-full" id={'pf-p-' + project.id}>
       <div className="pf-body">
         <div className="pf-pid">Project · {idx}</div>
         <h2 className="pf-pname">{project.title}</h2>
@@ -5247,7 +6951,7 @@ const DeepDive = ({ projects, selectedId, onSelect }) => {
   const sections = useMemo(() => {
     if (!dd) return [];
     const list = [];
-    if (dd.firstPrinciples) list.push({ id: 'fp', num: '00', label: 'First principles' });
+    if (dd.firstPrinciplesQA || dd.firstPrinciples) list.push({ id: 'fp', num: '00', label: 'First principles' });
     if (dd.decisions?.length) list.push({ id: 'decisions', num: '01', label: 'Decisions' });
     if (dd.algorithms?.length) list.push({ id: 'algorithms', num: '02', label: 'Algorithms' });
     if (dd.numbers?.length) list.push({ id: 'numbers', num: '03', label: 'Numbers' });
@@ -5410,10 +7114,19 @@ const DeepDive = ({ projects, selectedId, onSelect }) => {
         </div>
 
         {/* First principles */}
-        {dd.firstPrinciples && (
+        {(dd.firstPrinciplesQA || dd.firstPrinciples) && (
           <section className="pf-dd-section pf-dd-fp-section" id="sec-fp">
-            <SectionHead id="fp" num="00" title="First principles" em="— reason from here" />
-            {!collapsed.fp && (
+            <SectionHead id="fp" num="00" title="First principles" em="— L4 Q&amp;A, reason from here" />
+            {!collapsed.fp && (dd.firstPrinciplesQA ? (
+              <div className="pf-dd-fpqa">
+                {dd.firstPrinciplesQA.map((item, i) => (
+                  <div key={i} className="pf-dd-fpqa-item">
+                    <div className="pf-dd-fpqa-q">{item.q}</div>
+                    <div className="pf-dd-fpqa-a">{item.a}</div>
+                  </div>
+                ))}
+              </div>
+            ) : (
             <div className="pf-dd-fp">
               {dd.firstPrinciples.reduction && (
                 <div className="pf-dd-fp-block pf-dd-fp-reduction">
@@ -5452,7 +7165,7 @@ const DeepDive = ({ projects, selectedId, onSelect }) => {
                 </div>
               )}
             </div>
-            )}
+            ))}
           </section>
         )}
 
@@ -5830,6 +7543,369 @@ const HRQuestions = () => {
 };
 
 /* ============================================================================
+ * FULL CONTEXT COMPONENT — long-form teaching stories
+ * ========================================================================== */
+
+const FullContext = () => {
+  const ids = Object.keys(FULL_CONTEXT);
+  const [selected, setSelected] = useState(ids[0]);
+  const fc = FULL_CONTEXT[selected];
+
+  const pick = (id) => {
+    setSelected(id);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  return (
+    <div className="pf-fc-shell">
+      <aside className="pf-fc-side">
+        <div className="pf-dd-side-label">Projects</div>
+        <div className="pf-fc-list">
+          {ids.map((id) => (
+            <button
+              key={id}
+              className={`pf-fc-item ${selected === id ? 'active' : ''}`}
+              onClick={() => pick(id)}
+            >
+              {FULL_CONTEXT[id].title}
+            </button>
+          ))}
+        </div>
+        <div className="pf-fc-side-note">
+          Read top to bottom — sections build on each other. This is the
+          re-understand tab, not the recall tab.
+        </div>
+      </aside>
+      <div className="pf-fc-main">
+        <div className="pf-dd-eyebrow">Full context · first principles</div>
+        <h2 className="pf-fc-title">{fc.title}</h2>
+        <div className="pf-fc-subtitle">{fc.subtitle}</div>
+        {fc.sections.map((s, i) => (
+          <section key={i} className="pf-fc-section">
+            <h3 className="pf-fc-h">
+              <span className="pf-fc-num">{String(i + 1).padStart(2, '0')}</span>
+              {s.h}
+            </h3>
+            {s.body.map((p, j) => (
+              <p key={j} className="pf-fc-p">{p}</p>
+            ))}
+          </section>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+/* ============================================================================
+ * CODE GUIDES COMPONENT — whiteboard-ready code with narration
+ * ========================================================================== */
+
+/* ============================================================================
+ * CODE BLOCK — language label, copy button, lightweight syntax highlighting
+ * ========================================================================== */
+
+const CODE_KEYWORDS = new Set(('public private protected static final void class interface enum extends implements new return '
+  + 'if else for while do try catch finally throw throws switch case break continue this super null true false import package var record '
+  + 'const let function async await export default typeof instanceof '
+  + 'def lambda from elif except raise with as pass None True False in not and or '
+  + 'type query mutation input GET POST PUT PATCH DELETE '
+  + 'SELECT FROM WHERE AND OR ORDER BY LIMIT ENUM NOT NULL BIGINT '
+  + 'server location listen routes match route cluster body').split(' '));
+
+const detectLang = (code) => {
+  if (/<\/?[a-zA-Z][\w.-]*>/.test(code) && /<plugin>|<configuration>|xmlns|<\/(groupId|artifactId)/.test(code)) return 'xml';
+  if (/^\s*(def |import |from \w+ import|print\()/m.test(code) || /_test_split|predict_proba|precision_recall/.test(code)) return 'python';
+  if (/\b(mutation|query)\s*\{|^type \w+ \{/m.test(code)) return 'graphql';
+  if (/^(GET|POST|PUT|PATCH|DELETE)\s+\//m.test(code)) return 'http';
+  if (/\bSELECT\b|\bWHERE\b|ENUM\(|composite PK/i.test(code) && !/public|void/.test(code)) return 'sql';
+  if (/@\w+|\b(public|private|void)\b|new \w+\(/.test(code)) return 'java';
+  if (/=>|className=|React\./.test(code)) return 'jsx';
+  if (/gor --|nginx|server \{|ssl_certificate|forkCount|routes:/.test(code)) return 'config';
+  return 'code';
+};
+
+const escapeHtml = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+const highlightCode = (code, lang) => {
+  // Tokenize the RAW string, escaping as we emit.
+  const rules = [];
+  rules.push({ re: /\/\*[\s\S]*?\*\//y, cls: 'tok-c' });
+  rules.push({ re: /<!--[\s\S]*?-->/y, cls: 'tok-c' });
+  rules.push({ re: /\/\/[^\n]*/y, cls: 'tok-c' });
+  if (lang !== 'java' && lang !== 'jsx') rules.push({ re: /#[^\n]*/y, cls: 'tok-c' });
+  if (lang === 'sql') rules.push({ re: /--[^\n]*/y, cls: 'tok-c' });
+  rules.push({ re: /"(?:[^"\\\n]|\\.)*"/y, cls: 'tok-s' });
+  rules.push({ re: /'(?:[^'\\\n]|\\.)*'/y, cls: 'tok-s' });
+  rules.push({ re: /`[^`]*`/y, cls: 'tok-s' });
+  rules.push({ re: /@\w+/y, cls: 'tok-a' });
+  if (lang === 'xml') rules.push({ re: /<\/?[A-Za-z][\w.-]*/y, cls: 'tok-t' });
+  rules.push({ re: /\b\d+(?:\.\d+)?\b/y, cls: 'tok-n' });
+  rules.push({ re: /\b[A-Za-z_]\w*\b/y, cls: null }); // word: keyword check
+
+  let out = '', i = 0;
+  const n = code.length;
+  while (i < n) {
+    let matched = false;
+    for (const rule of rules) {
+      rule.re.lastIndex = i;
+      const m = rule.re.exec(code);
+      if (m && m.index === i) {
+        const t = m[0];
+        let cls = rule.cls;
+        if (cls === null) cls = CODE_KEYWORDS.has(t) ? 'tok-k' : '';
+        out += cls ? '<span class="' + cls + '">' + escapeHtml(t) + '</span>' : escapeHtml(t);
+        i += t.length;
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) { out += escapeHtml(code[i]); i += 1; }
+  }
+  return out;
+};
+
+const CodeBlock = ({ code }) => {
+  const [copied, setCopied] = useState(false);
+  const lang = useMemo(() => detectLang(code), [code]);
+  const html = useMemo(() => highlightCode(code, lang), [code, lang]);
+  const copy = () => {
+    try {
+      if (navigator.clipboard) navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1400);
+    } catch (e) { /* clipboard unavailable */ }
+  };
+  return (
+    <div className="pf-codeblock">
+      <div className="pf-codeblock-bar">
+        <span className="pf-codeblock-lang">{lang}</span>
+        <button className="pf-codeblock-copy" onClick={copy}>
+          {copied ? 'Copied ✓' : 'Copy'}
+        </button>
+      </div>
+      <pre className="pf-cg-code"><code dangerouslySetInnerHTML={{ __html: html }} /></pre>
+    </div>
+  );
+};
+
+const CodeGuides = () => {
+  const ids = Object.keys(CODE_GUIDES);
+  const [selected, setSelected] = useState(ids[0]);
+  const g = CODE_GUIDES[selected];
+
+  return (
+    <div className="pf-fc-shell">
+      <aside className="pf-fc-side">
+        <div className="pf-dd-side-label">Guides</div>
+        <div className="pf-fc-list">
+          {ids.map((id) => (
+            <button
+              key={id}
+              className={`pf-fc-item ${selected === id ? 'active' : ''}`}
+              onClick={() => { setSelected(id); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+            >
+              {CODE_GUIDES[id].title}
+            </button>
+          ))}
+        </div>
+        <div className="pf-fc-side-note">
+          Build in the numbered order on a whiteboard. The "say" block is your
+          narration — the code is only half the answer.
+        </div>
+      </aside>
+      <div className="pf-fc-main">
+        <div className="pf-dd-eyebrow">Code · interview-ready</div>
+        <h2 className="pf-fc-title">{g.title}</h2>
+        <div className="pf-fc-subtitle">{g.intro}</div>
+        {g.sections.map((s, i) => (
+          <section key={i} className="pf-cg-section">
+            <h3 className="pf-cg-h">{s.h}</h3>
+            {s.say && (
+              <div className="pf-cg-say">
+                <span className="pf-cg-say-label">What to say</span>
+                {s.say}
+              </div>
+            )}
+            {s.code && <CodeBlock code={s.code} />}
+          </section>
+        ))}
+        {g.close && (
+          <div className="pf-cg-close">
+            <span className="pf-cg-say-label">If you remember nothing else</span>
+            {g.close}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+/* ============================================================================
+ * SYSTEM DESIGN COMPONENT — HLD + LLD for own projects
+ * ========================================================================== */
+
+const SystemDesign = () => {
+  const ids = Object.keys(SYSTEM_DESIGNS);
+  const [selected, setSelected] = useState(ids[0]);
+  const d = SYSTEM_DESIGNS[selected];
+
+  return (
+    <div className="pf-fc-shell">
+      <aside className="pf-fc-side">
+        <div className="pf-dd-side-label">Designs</div>
+        <div className="pf-fc-list">
+          {ids.map((id) => (
+            <button
+              key={id}
+              className={`pf-fc-item ${selected === id ? 'active' : ''}`}
+              onClick={() => { setSelected(id); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+            >
+              {SYSTEM_DESIGNS[id].title}
+            </button>
+          ))}
+        </div>
+        <div className="pf-fc-side-note">
+          Speak in this order: opener → requirements → numbers → HLD →
+          flow → LLD → tradeoffs → failures → evolution. Tradeoffs and
+          failure walkthroughs are where L4 is decided.
+        </div>
+      </aside>
+      <div className="pf-fc-main">
+        <div className="pf-dd-eyebrow">System design · L4 walkthrough</div>
+        <h2 className="pf-fc-title">{d.title}</h2>
+        <div className="pf-fc-subtitle">{d.goal}</div>
+
+        {d.openingScript && (
+          <div className="pf-sd-open">
+            <span className="pf-cg-say-label">The 60-second opener — say this while drawing</span>
+            {d.openingScript}
+          </div>
+        )}
+
+        <section className="pf-sd-section">
+          <h3 className="pf-cg-h">Requirements</h3>
+          <div className="pf-sd-req-grid">
+            <div>
+              <div className="pf-sd-req-label">Functional</div>
+              <ul className="pf-sd-list">
+                {d.requirements.functional.map((r, i) => <li key={i}>{r}</li>)}
+              </ul>
+            </div>
+            <div>
+              <div className="pf-sd-req-label">Non-functional</div>
+              <ul className="pf-sd-list">
+                {d.requirements.nonFunctional.map((r, i) => <li key={i}>{r}</li>)}
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        {d.scale && d.scale.length > 0 && (
+          <section className="pf-sd-section">
+            <h3 className="pf-cg-h">Numbers to anchor the design</h3>
+            <ul className="pf-sd-list">
+              {d.scale.map((s, i) => <li key={i}>{s}</li>)}
+            </ul>
+          </section>
+        )}
+
+        <section className="pf-sd-section">
+          <h3 className="pf-cg-h">High-level design</h3>
+          <pre className="pf-sd-diagram"><code>{d.hld.diagram}</code></pre>
+          <div className="pf-sd-components">
+            {d.hld.components.map((c, i) => (
+              <div key={i} className="pf-sd-component">
+                <div className="pf-sd-comp-name">{c.n}</div>
+                <div className="pf-sd-comp-role">{c.r}</div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="pf-sd-section">
+          <h3 className="pf-cg-h">Flow</h3>
+          <ol className="pf-sd-flow">
+            {d.flow.map((f, i) => <li key={i}>{f}</li>)}
+          </ol>
+        </section>
+
+        {d.dataModel && (
+          <section className="pf-sd-section">
+            <h3 className="pf-cg-h">Data model</h3>
+            <CodeBlock code={d.dataModel} />
+          </section>
+        )}
+
+        {d.api && (
+          <section className="pf-sd-section">
+            <h3 className="pf-cg-h">API / contract</h3>
+            <CodeBlock code={d.api} />
+          </section>
+        )}
+
+        <section className="pf-sd-section">
+          <h3 className="pf-cg-h">Low-level detail</h3>
+          {d.lld.map((block, i) => (
+            <div key={i} className="pf-sd-lld-block">
+              <div className="pf-sd-req-label">{block.h}</div>
+              <ul className="pf-sd-list">
+                {block.points.map((p, j) => <li key={j}>{p}</li>)}
+              </ul>
+            </div>
+          ))}
+        </section>
+
+        {d.tradeoffs && d.tradeoffs.length > 0 && (
+          <section className="pf-sd-section">
+            <h3 className="pf-cg-h">Tradeoffs — defended, not listed</h3>
+            <div className="pf-sd-trades">
+              {d.tradeoffs.map((t, i) => (
+                <div key={i} className="pf-sd-trade">
+                  <div className="pf-sd-trade-head">
+                    <span className="pf-sd-trade-chose">{t.choice}</span>
+                    <span className="pf-sd-trade-over">over {t.over}</span>
+                  </div>
+                  <div className="pf-sd-trade-why">{t.why}</div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {d.failures && d.failures.length > 0 && (
+          <section className="pf-sd-section">
+            <h3 className="pf-cg-h">Failure walkthrough — what breaks and what happens</h3>
+            <div className="pf-sd-fails">
+              {d.failures.map((f, i) => (
+                <div key={i} className="pf-sd-fail">
+                  <div className="pf-sd-fail-scenario">{f.scenario}</div>
+                  <div className="pf-sd-fail-handling">{f.handling}</div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {d.evolution && d.evolution.length > 0 && (
+          <section className="pf-sd-section">
+            <h3 className="pf-cg-h">Evolution — how it grows</h3>
+            <ul className="pf-sd-list">
+              {d.evolution.map((e, i) => <li key={i}>{e}</li>)}
+            </ul>
+          </section>
+        )}
+
+        <div className="pf-cg-close">
+          <span className="pf-cg-say-label">How to present it</span>
+          {d.presentTip}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
+/* ============================================================================
  * ROOT
  * ========================================================================== */
 
@@ -5861,6 +7937,9 @@ const Projects = () => {
       if (e.key === 'o') setView('overview');
       if (e.key === 'd') setView('deep-dive');
       if (e.key === 'h') setView('hr-round');
+      if (e.key === 'c') setView('context');
+      if (e.key === 'k') setView('code');
+      if (e.key === 's') setView('design');
       if (view === 'deep-dive' && (e.key === '[' || e.key === ']')) {
         const idx = PROJECTS.findIndex((p) => p.id === selectedDeepDiveId);
         if (e.key === '[' && idx > 0) setSelectedDeepDiveId(PROJECTS[idx - 1].id);
@@ -5975,7 +8054,25 @@ const Projects = () => {
             onClick={() => setView('deep-dive')}
           >
             Deep <em>dive</em>
-            <span className="pf-tab-badge">Staff-level</span>
+            <span className="pf-tab-badge">L4 depth</span>
+          </button>
+          <button
+            className={`pf-tab ${view === 'context' ? 'active' : ''}`}
+            onClick={() => setView('context')}
+          >
+            Full <em>context</em>
+          </button>
+          <button
+            className={`pf-tab ${view === 'code' ? 'active' : ''}`}
+            onClick={() => setView('code')}
+          >
+            Code
+          </button>
+          <button
+            className={`pf-tab ${view === 'design' ? 'active' : ''}`}
+            onClick={() => setView('design')}
+          >
+            System <em>design</em>
           </button>
           <button
             className={`pf-tab ${view === 'hr-round' ? 'active' : ''}`}
@@ -5985,38 +8082,57 @@ const Projects = () => {
             <span className="pf-tab-badge hr">Behavioral</span>
           </button>
           <div className="pf-kbd-hint">
-            <kbd>o</kbd>/<kbd>d</kbd>/<kbd>h</kbd> views · <kbd>[</kbd><kbd>]</kbd> projects · <kbd>t</kbd> theme
+            <kbd>o</kbd>/<kbd>d</kbd>/<kbd>c</kbd>/<kbd>k</kbd>/<kbd>s</kbd>/<kbd>h</kbd> views · <kbd>[</kbd><kbd>]</kbd> projects · <kbd>t</kbd> theme
           </div>
         </div>
 
         {view === 'overview' && (
-          <>
-            {/* FILTERS */}
-            <div className="pf-filters">
-              {filters.map((f) => (
-                <button
-                  key={f}
-                  className={`pf-filter ${filter === f ? 'active' : ''}`}
-                  onClick={() => setFilter(f)}
-                >
-                  {filterLabel(f)}
-                </button>
-              ))}
+          <div className="pf-ov-shell">
+            <aside className="pf-ov-side">
+              <div className="pf-dd-side-label">Jump to project</div>
+              <div className="pf-fc-list">
+                {filtered.map((p) => (
+                  <button
+                    key={p.id}
+                    className="pf-fc-item"
+                    onClick={() => {
+                      const el = document.getElementById('pf-p-' + p.id);
+                      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }}
+                  >
+                    <span className="pf-ov-item">
+                      <span className="pf-ov-tier" data-tier={p.tier}>T{p.tier}</span>
+                      <span>{p.title}</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <div className="pf-dd-side-label" style={{ marginTop: 22 }}>On every card</div>
+              <div className="pf-ov-legend">
+                <span>§ 01 Narrative</span>
+                <span>§ 02 Problem</span>
+                <span>§ 03 Architecture</span>
+                <span>§ 04 Impact</span>
+                <span>§ 05 Killer answer</span>
+                <span>§ 06 Grill Q + A</span>
+                <span>§ 07 Landmines</span>
+              </div>
+            </aside>
+            <div className="pf-ov-main">
+              {/* PROJECTS */}
+              <main>
+                {filtered.map((p, i) => (
+                  <Project key={p.id} project={p} index={PROJECTS.indexOf(p)} />
+                ))}
+              </main>
+
+              {/* FOOTER */}
+              <footer className="pf-footer">
+                <span>End of dossier</span>
+                <span>{PROJECTS.length} projects</span>
+              </footer>
             </div>
-
-            {/* PROJECTS */}
-            <main>
-              {filtered.map((p, i) => (
-                <Project key={p.id} project={p} index={PROJECTS.indexOf(p)} />
-              ))}
-            </main>
-
-            {/* FOOTER */}
-            <footer className="pf-footer">
-              <span>End of dossier</span>
-              <span>{filtered.length} of {PROJECTS.length} shown</span>
-            </footer>
-          </>
+          </div>
         )}
 
         {view === 'deep-dive' && (
@@ -6029,6 +8145,36 @@ const Projects = () => {
             <footer className="pf-footer" style={{ marginTop: 64 }}>
               <span>Deep dive · {deepDiveCount} projects</span>
               <span>Use when interviewer goes 3+ layers deep</span>
+            </footer>
+          </>
+        )}
+
+        {view === 'context' && (
+          <>
+            <FullContext />
+            <footer className="pf-footer" style={{ marginTop: 64 }}>
+              <span>Full context · {Object.keys(FULL_CONTEXT).length} teaching stories</span>
+              <span>Re-understand first, then recall</span>
+            </footer>
+          </>
+        )}
+
+        {view === 'code' && (
+          <>
+            <CodeGuides />
+            <footer className="pf-footer" style={{ marginTop: 64 }}>
+              <span>Code · {Object.keys(CODE_GUIDES).length} guides</span>
+              <span>Narrate the say-blocks while you write</span>
+            </footer>
+          </>
+        )}
+
+        {view === 'design' && (
+          <>
+            <SystemDesign />
+            <footer className="pf-footer" style={{ marginTop: 64 }}>
+              <span>System design · {Object.keys(SYSTEM_DESIGNS).length} walkthroughs</span>
+              <span>Goal → HLD → flow → LLD → scale</span>
             </footer>
           </>
         )}
